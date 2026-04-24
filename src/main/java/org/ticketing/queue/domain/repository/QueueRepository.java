@@ -1,0 +1,19 @@
+package org.ticketing.queue.domain.repository;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.ticketing.queue.domain.dto.QueueProjection;
+import org.ticketing.queue.domain.dto.QueueSearchCondition;
+import org.ticketing.queue.domain.model.Queue;
+
+import java.util.UUID;
+
+public interface QueueRepository {
+    Queue findById(UUID queueId);
+
+    Queue findByIdAndDeletedAtIsNull(UUID queueId);
+
+    Page<QueueProjection> findAllByCondition(QueueSearchCondition condition, Pageable pageable);
+
+    Queue save(Queue queue);
+}
