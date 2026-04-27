@@ -27,7 +27,7 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
     private final RedisTemplate<String, String> redisTemplate;
 
     private static final String QUEUE_KEY = "queue:%s"; // queue:{matchId}
-    private static final String SLOTS_MAX_KEY  = "queue:slots:max:%d";  // 최대 슬롯
+    private static final String SLOTS_MAX_KEY  = "queue:slots:max:%s";  // 최대 슬롯
     private static final String SLOTS_AVAILABLE_KEY  = "queue:slots:available:%s";  // 남은 슬롯
     private static final String PASS_TOKEN_PREFIX = "queue:pass-token:";
     private static final String PLACEHOLDER = "PENDING";   // 토큰 발급 전 선점 표시

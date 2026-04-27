@@ -37,7 +37,7 @@ public class RuaScript {
                     current = tonumber(current)
                     max = tonumber(max)
     
-                    if current > max then
+                    if current >= max then
                         return -1
                     end
     
