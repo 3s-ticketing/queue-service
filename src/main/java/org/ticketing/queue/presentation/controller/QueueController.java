@@ -102,6 +102,6 @@ public class QueueController {
      * Role : INTERNAL
      */
     @GetMapping("/{matchId}/validation")
-    public void validation(@RequestBody TokenValidateRequest request) {
+    public void validation(@PathVariable("matchId") UUID matchId, @RequestBody TokenValidateRequest request) {
     }
 }

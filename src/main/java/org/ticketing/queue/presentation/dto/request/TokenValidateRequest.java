@@ -9,9 +9,8 @@ public record TokenValidateRequest(
         UUID userId,
         String accessToken
 ) {
-    public static TokenValidateCommand toCommand(TokenValidateRequest request) {
+    public static TokenValidateCommand toCommand(TokenValidateRequest request, UUID matchId) {
         return new TokenValidateCommand(
-                request.matchId,
                 request.userId,
                 request.accessToken
         );

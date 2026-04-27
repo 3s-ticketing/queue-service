@@ -1,6 +1,7 @@
 package org.ticketing.queue.infrastructure.persistence;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Repository;
@@ -10,16 +11,23 @@ import org.ticketing.queue.domain.repository.QueueRedisRepository;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.Collections;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
+import static org.ticketing.queue.infrastructure.util.RuaScript.ACQUIRE_SLOT_SCRIPT;
+import static org.ticketing.queue.infrastructure.util.RuaScript.RELEASE_SLOT_SCRIPT;
+
 @Repository
+@Slf4j
 @RequiredArgsConstructor
 public class QueueRedisRepositoryImpl implements QueueRedisRepository {
 
     private final RedisTemplate<String, String> redisTemplate;
 
     private static final String QUEUE_KEY = "queue:%s"; // queue:{matchId}
+    private static final String SLOTS_MAX_KEY  = "queue:slots:max:%d";  // 최대 슬롯
     private static final String SLOTS_AVAILABLE_KEY  = "queue:slots:available:%s";  // 남은 슬롯
     private static final String PASS_TOKEN_PREFIX = "queue:pass-token:";
     private static final String PLACEHOLDER = "PENDING";   // 토큰 발급 전 선점 표시
@@ -99,20 +107,33 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
     // 슬롯 수 차감
     @Override
     public boolean acquireSlot(UUID matchId) {
-        Long remaining = redisTemplate.opsForValue().decrement(SLOTS_AVAILABLE_KEY.formatted(matchId));
+        String key = SLOTS_AVAILABLE_KEY.formatted(matchId);
+        Long result = redisTemplate.execute(ACQUIRE_SLOT_SCRIPT, Collections.singletonList(key));
 
-        // 차감 후 0 이상이면 선점 성공, 음수면 실패 후 복구
-        if (remaining < 0) {
-            redisTemplate.opsForValue().increment(SLOTS_AVAILABLE_KEY.formatted(matchId));
-            return false;
+        if (result == null) {
+            throw new QueueException("Redis 슬롯 선점 결과가 null입니다.", HttpStatus.INTERNAL_SERVER_ERROR);
         }
-        return true;
+
+        return result >= 0;
     }
 
     // 슬롯 반환
     @Override
     public void releaseSlot(UUID matchId) {
-        redisTemplate.opsForValue().increment(SLOTS_AVAILABLE_KEY.formatted(matchId));
+        String availableKey = SLOTS_AVAILABLE_KEY.formatted(matchId);
+        String maxKey = SLOTS_MAX_KEY.formatted(matchId);
+
+        Long result = redisTemplate.execute(RELEASE_SLOT_SCRIPT, List.of(availableKey, maxKey));
+
+        if (result == null) {
+            throw new QueueException("슬롯 반환 결과가 null입니다.", HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+        if (result == -2) {
+            throw new QueueException("슬롯 정보가 초기화되지 않았습니다.", HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+        if (result == -1) {
+            log.warn("[QUEUE] 슬롯 최대치 초과 반환 방지 matchId={}", matchId);
+        }
     }
 
     /**
