@@ -32,13 +32,21 @@ spring:
     consumer:
       group-id: queue-service
       auto-offset-reset: earliest
+      enable-auto-commit: false
+      max-poll-records: 10
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
-      enable-auto-commit: false    # 수동 커밋 (메시지 처리 보장)
       properties:
         spring.json.trusted.packages: "*"
+        session.timeout.ms: 15000
+        heartbeat.interval.ms: 5000
+        retry.backoff.ms: 2000
+        isolation.level: read_committed
     listener:
-      ack-mode: manual             # 수동 ACK
+      ack-mode: manual
+      concurrency: 3
+      missing-topics-fatal: false
+      observation-enabled: true
 
 eureka:
   client:
@@ -46,7 +54,7 @@ eureka:
 
 queue:
   token:
-    secret: ${QUEUE_TOKEN_SECRET}
+    secret: ${QUEUE_TOKEN_SECRET:aUpW71xa0Tn+otrFrnAbF3c+G4MH4QDXjZvTjvE+3D8=}
 
   # Outbox 스케줄러 (실패 메시지 재시도)
   outbox:
