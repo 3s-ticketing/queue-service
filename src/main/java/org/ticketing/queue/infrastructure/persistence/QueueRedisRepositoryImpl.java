@@ -173,6 +173,23 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
         redisTemplate.delete(PASS_TOKEN_PREFIX + matchId + ":" + userId);
     }
 
+    @Override
+    public String findPassToken(UUID matchId, UUID userId) {
+        String key = PASS_TOKEN_PREFIX + matchId + ":" + userId;
+        String token = redisTemplate.opsForValue().get(key);
+
+        if (token == null) {
+            throw new QueueException("해당 토큰이 존재하지 않습니다.", HttpStatus.NOT_FOUND);
+        }
+        return token;
+    }
+
+    @Override
+    public LocalDateTime getExpiredAt(UUID matchId, UUID userId) {
+        String key = PASS_TOKEN_PREFIX + matchId + ":" + userId;
+        Long ttlSeconds = redisTemplate.getExpire(key, TimeUnit.SECONDS);
+        return LocalDateTime.now().plusSeconds(ttlSeconds);
+    }
 
     private String getKey(UUID matchId) {
         return String.format(QUEUE_KEY, matchId);

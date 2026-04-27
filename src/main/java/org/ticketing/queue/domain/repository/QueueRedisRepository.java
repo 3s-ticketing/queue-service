@@ -39,4 +39,7 @@ public interface QueueRedisRepository {
 
     void deletePassToken(UUID matchId, UUID userId);
 
+    String findPassToken(UUID matchId, UUID userId);
+
+    LocalDateTime getExpiredAt(UUID matchId, UUID userId);
 }

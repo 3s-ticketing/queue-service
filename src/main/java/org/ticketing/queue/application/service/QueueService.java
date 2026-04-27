@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.ticketing.queue.application.dto.command.QueueCreateCommand;
 import org.ticketing.queue.application.dto.command.QueueUpdateCommand;
+import org.ticketing.queue.application.dto.command.TokenValidateCommand;
 import org.ticketing.queue.application.dto.query.QueueListQuery;
 import org.ticketing.queue.application.dto.result.QueueListResult;
 import org.ticketing.queue.application.dto.result.QueueResult;
@@ -312,4 +313,17 @@ public class QueueService {
                 .toList();
     }
 
+    public void validate(TokenValidateCommand command) {
+        String token = queueRedisRepository.findPassToken(command.matchId(), command.userId());
+        LocalDateTime expiredAt = queueRedisRepository.getExpiredAt(command.matchId(), command.userId());
+
+        // 저장된 accessToken 불일치
+        if (!token.equals(command.accessToken())) {
+            throw new QueueException("토큰이 불일치합니다.", HttpStatus.BAD_REQUEST);
+        }
+        // 만료 시간 체크
+        if (expiredAt.isBefore(LocalDateTime.now())) {
+            throw new QueueException("만료된 토큰입니다.", HttpStatus.REQUEST_TIMEOUT);
+        }
+    }
 }
