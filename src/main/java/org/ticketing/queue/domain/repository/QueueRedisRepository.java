@@ -7,7 +7,7 @@ public interface QueueRedisRepository {
 
     // ── Sorted Set (대기열) ───────────────────────────────────────────────
 
-    void entry(UUID matchId, UUID userId);
+    boolean entry(UUID matchId, UUID userId);
 
     Long getRank(UUID matchId, UUID userId);
 

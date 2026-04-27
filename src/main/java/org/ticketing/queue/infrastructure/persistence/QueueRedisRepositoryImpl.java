@@ -27,10 +27,12 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
 
     // 유저 대기열 진입 (score = 진입 시각)
     @Override
-    public void entry(UUID matchId, UUID userId) {
+    public boolean entry(UUID matchId, UUID userId) {
         String key = getKey(matchId);
         double score = System.currentTimeMillis();
-        redisTemplate.opsForZSet().add(key, userId.toString(), score);
+        return Boolean.TRUE.equals(
+                redisTemplate.opsForZSet()
+                        .addIfAbsent(key, userId.toString(), score));
     }
 
     // 유저의 현재 순번 조회 (0부터 시작하므로 +1)

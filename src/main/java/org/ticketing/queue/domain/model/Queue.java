@@ -34,12 +34,12 @@ public class Queue extends BaseEntity {
     @Column(name = "open_at", nullable = false)
     private LocalDateTime openAt;
 
-    public static Queue create(UUID id, UUID matchId, int maxActiveUsers, QueueStatus status, LocalDateTime openAt) {
+    public static Queue create(UUID id, UUID matchId, int maxActiveUsers, LocalDateTime openAt) {
         return new Queue(
                 id,
                 matchId,
                 maxActiveUsers,
-                status,
+                QueueStatus.CLOSED,
                 openAt
         );
     }

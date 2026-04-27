@@ -72,7 +72,6 @@ public class QueueService {
                 UUID.randomUUID(),
                 command.matchId(),
                 command.maxActiveUsers(),
-                command.status(),
                 command.openAt()
         );
 
@@ -95,11 +94,11 @@ public class QueueService {
     }
 
     public void entry(UUID matchId, UUID userId) {
-        // 이미 대기열에 존재하는 유저라면 중복 진입 방지
-        if (queueRedisRepository.exists(matchId, userId)) {
+        boolean added = queueRedisRepository.entry(matchId, userId);
+
+        if (!added) {
             throw new QueueException("이미 대기열에서 대기중입니다.", HttpStatus.BAD_REQUEST);
         }
-        queueRedisRepository.entry(matchId, userId);
     }
 
     /**
@@ -185,7 +184,7 @@ public class QueueService {
                 tokenAcquired = queueRedisRepository.acquirePassToken(matchId, userId);
                 if (!tokenAcquired) {
                     String existingToken = queueRedisRepository.getPassToken(matchId, userId);
-                    if (existingToken == null || existingToken.equals("PLACEHOLDER")) {
+                    if (existingToken == null) {
                         sendEvent(emitter, UserStatusResponse.ofWaiting(rank, totalCount));
                         return;
                     }

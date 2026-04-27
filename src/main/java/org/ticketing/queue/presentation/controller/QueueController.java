@@ -11,6 +11,7 @@ import org.ticketing.queue.application.service.QueueService;
 import org.ticketing.queue.presentation.dto.request.QueueCreateRequest;
 import org.ticketing.queue.presentation.dto.request.QueueListGetRequest;
 import org.ticketing.queue.presentation.dto.request.QueueUpdateRequest;
+import org.ticketing.queue.presentation.dto.request.TokenValidateRequest;
 import org.ticketing.queue.presentation.dto.response.QueueIdResponse;
 import org.ticketing.queue.presentation.dto.response.QueueListResponse;
 import org.ticketing.queue.presentation.dto.response.QueueResponse;
@@ -97,10 +98,10 @@ public class QueueController {
 
     /**
      * 대기열 통과 검증
-     * GET /api/queues/{matchId}/verification
+     * GET /api/queues/{matchId}/validation
+     * Role : INTERNAL
      */
-    @GetMapping("/{matchId}/verification")
-    public void verification(@PathVariable("matchId") UUID matchId, @RequestHeader("X-User-Id") UUID userId) {
-
+    @GetMapping("/{matchId}/validation")
+    public void validation(@RequestBody TokenValidateRequest request) {
     }
 }
