@@ -213,7 +213,7 @@ public class QueueService {
                         UUID.randomUUID().toString(),   // correlationId
                         "QUEUE",                                  // domainType
                         matchId.toString(),                       // domainId
-                        "reservaation.requested",                 // eventType (= Kafka Topic)
+                        "reservation.requested",                  // eventType (= Kafka Topic)
                         passedEvent
                 );
 
