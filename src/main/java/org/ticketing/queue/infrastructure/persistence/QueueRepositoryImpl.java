@@ -38,6 +38,12 @@ public class QueueRepositoryImpl implements QueueRepository {
     }
 
     @Override
+    public Queue findByMatchId(UUID matchId) {
+        return jpaQueueRepository.findByMatchId(matchId)
+                .orElseThrow(() -> new QueueException("해당 큐가 존재하지 않습니다.", HttpStatus.NOT_FOUND));
+    }
+
+    @Override
     public Queue findByIdAndDeletedAtIsNull(UUID queueId) {
         return jpaQueueRepository.findByIdAndDeletedAtIsNull(queueId)
                 .orElseThrow(() -> new QueueException("해당 큐가 존재하지 않습니다.", HttpStatus.NOT_FOUND));
@@ -85,6 +91,11 @@ public class QueueRepositoryImpl implements QueueRepository {
     @Override
     public Queue save(Queue queue) {
         return jpaQueueRepository.save(queue);
+    }
+
+    @Override
+    public boolean existsByMatchId(UUID matchId) {
+        return jpaQueueRepository.existsByMatchId(matchId);
     }
 
     private OrderSpecifier<?>[] getOrderSpecifiers(Sort sort) {

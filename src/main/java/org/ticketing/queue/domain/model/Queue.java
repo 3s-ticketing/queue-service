@@ -28,8 +28,8 @@ public class Queue extends BaseEntity {
     private Integer maxActiveUsers;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, columnDefinition = "varchar(30) default 'CLOSED'")
-    private QueueStatus status;
+    @Column(name = "status", nullable = false)
+    private QueueStatus status = QueueStatus.CLOSED;
 
     @Column(name = "open_at", nullable = false)
     private LocalDateTime openAt;

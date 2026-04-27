@@ -21,7 +21,7 @@ public interface QueueRedisRepository {
 
     // ── 슬롯 관리 ────────────────────────────────────────────────────────
 
-    void initSlots(UUID matchId, int maxActiveUsers);
+    void initSlots(UUID matchId);
 
     Long getAvailableSlots(UUID matchId);
 

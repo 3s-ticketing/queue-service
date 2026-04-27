@@ -69,13 +69,16 @@ public class QueueService {
     }
 
     public UUID createQueue(QueueCreateCommand command) {
+        if (queueRepository.existsByMatchId(command.matchId())) {
+            throw new QueueException("이미 해당 경기의 큐 설정이 존재합니다.", HttpStatus.BAD_REQUEST);
+        }
+
         Queue queue = Queue.create(
                 UUID.randomUUID(),
                 command.matchId(),
                 command.maxActiveUsers(),
                 command.openAt()
         );
-
         return queueRepository.save(queue).getId();
     }
 

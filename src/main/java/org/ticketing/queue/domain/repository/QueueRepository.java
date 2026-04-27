@@ -11,9 +11,13 @@ import java.util.UUID;
 public interface QueueRepository {
     Queue findById(UUID queueId);
 
+    Queue findByMatchId(UUID matchId);
+
     Queue findByIdAndDeletedAtIsNull(UUID queueId);
 
     Page<QueueProjection> findAllByCondition(QueueSearchCondition condition, Pageable pageable);
 
     Queue save(Queue queue);
+
+    boolean existsByMatchId(UUID matchId);
 }
