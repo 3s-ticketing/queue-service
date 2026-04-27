@@ -34,10 +34,10 @@ public class QueueHistory {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 30)
-    private QueueHistoryStatus status;
+    private QueueExitReason exitReason;
 
     // Factory Methods
-    public static QueueHistory create(UUID userId, UUID matchId, LocalDateTime enteredAt, QueueHistoryStatus status) {
+    public static QueueHistory create(UUID userId, UUID matchId, LocalDateTime enteredAt, QueueExitReason status) {
         return new QueueHistory(
                 UUID.randomUUID(),
                 userId,
@@ -48,9 +48,52 @@ public class QueueHistory {
         );
     }
 
-    // Business Methods
-    public void exit(LocalDateTime exitedAt, QueueHistoryStatus status) {
-        this.exitedAt = exitedAt;
-        this.status = status;
+    /** 토큰 발급 성공 - 정상 통과 */
+    public static QueueHistory ofPassed(UUID matchId, UUID userId, LocalDateTime enteredAt) {
+        return new QueueHistory(
+                UUID.randomUUID(),
+                userId,
+                matchId,
+                enteredAt,
+                LocalDateTime.now(),
+                QueueExitReason.PASSED
+        );
     }
+
+    /** IOException 발생으로 인한 이탈 */
+    public static QueueHistory ofIoError(UUID matchId, UUID userId, LocalDateTime enteredAt) {
+        return new QueueHistory(
+                UUID.randomUUID(),
+                userId,
+                matchId,
+                enteredAt,
+                LocalDateTime.now(),
+                QueueExitReason.IO_ERROR
+        );
+    }
+
+    /** 예상치 못한 Exception으로 인한 이탈 */
+    public static QueueHistory ofUnexpectedError(UUID matchId, UUID userId, LocalDateTime enteredAt) {
+        return new QueueHistory(
+                UUID.randomUUID(),
+                userId,
+                matchId,
+                enteredAt,
+                LocalDateTime.now(),
+                QueueExitReason.UNEXPECTED_ERROR
+        );
+    }
+
+    /** SSE 타임아웃으로 인한 이탈 */
+    public static QueueHistory ofTimeout(UUID matchId, UUID userId, LocalDateTime enteredAt) {
+        return new QueueHistory(
+                UUID.randomUUID(),
+                userId,
+                matchId,
+                enteredAt,
+                LocalDateTime.now(),
+                QueueExitReason.TIMEOUT
+        );
+    }
+
 }

@@ -2,12 +2,12 @@ package org.ticketing.queue;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.autoconfigure.domain.EntityScan;
-import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
-@SpringBootApplication
-@EnableJpaRepositories(basePackages = "org.ticketing.queue.infrastructure.persistence")
-@EntityScan(basePackages = "org.ticketing.queue.domain.model")
+@SpringBootApplication(
+        exclude = {
+                org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration.class
+        }
+)
 public class QueueServiceApplication {
 
     public static void main(String[] args) {

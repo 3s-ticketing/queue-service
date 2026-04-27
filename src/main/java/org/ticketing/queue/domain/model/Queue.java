@@ -5,7 +5,7 @@ import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.iimsa.common.domain.BaseEntity;
+import org.ticketing.common.domain.BaseEntity;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
