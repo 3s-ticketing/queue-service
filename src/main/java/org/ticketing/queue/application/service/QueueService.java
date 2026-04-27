@@ -11,14 +11,12 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import org.ticketing.common.event.Events;
 import org.ticketing.queue.application.dto.command.QueueCreateCommand;
 import org.ticketing.queue.application.dto.command.QueueUpdateCommand;
 import org.ticketing.queue.application.dto.query.QueueListQuery;
 import org.ticketing.queue.application.dto.result.QueueListResult;
 import org.ticketing.queue.application.dto.result.QueueResult;
 import org.ticketing.queue.domain.dto.QueueProjection;
-import org.ticketing.queue.domain.event.QueuePassedEvent;
 import org.ticketing.queue.domain.exception.QueueException;
 import org.ticketing.queue.domain.model.Queue;
 import org.ticketing.queue.domain.model.QueueExitReason;
@@ -208,15 +206,7 @@ public class QueueService {
                 queueRedisRepository.savePassToken(matchId, userId, token.getToken());
                 queueRedisRepository.exit(matchId, userId);
 
-                QueuePassedEvent passedEvent = QueuePassedEvent.of(matchId, userId, token.getToken());
-                Events.trigger(
-                        UUID.randomUUID().toString(),   // correlationId
-                        "QUEUE",                                  // domainType
-                        matchId.toString(),                       // domainId
-                        "reservation.requested",                  // eventType (= Kafka Topic)
-                        passedEvent
-                );
-
+                // 큐 이탈 시 히스토리 기록
                 recordHistory(matchId, userId, enteredAt, QueueExitReason.PASSED);
 
                 sendEvent(emitter, UserStatusResponse.ofPassed(rank, totalCount, token.getToken()));
