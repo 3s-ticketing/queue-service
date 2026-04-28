@@ -40,6 +40,7 @@ public class MatchEventConsumer {
             event = objectMapper.readValue(record.value(), MatchApprovedEvent.class);
             queueRedisRepository.initSlots(event.matchId());
             log.info("[queue-service] 레디스 대기열 설정 추가: {}", event.matchId());
+
             ack.acknowledge(); // 정상 처리 후 ACK
 
         } catch (Exception e) {
