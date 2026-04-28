@@ -11,7 +11,15 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "p_queue")
+@Table(
+        name = "p_queue",
+        uniqueConstraints = {
+                @UniqueConstraint(
+                        name = "uk_p_queue_match_id",
+                        columnNames = {"match_id"}
+                )
+        }
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
@@ -55,15 +63,15 @@ public class Queue extends BaseEntity {
         delete(String.valueOf(userId));
     }
 
-    public void activate(UUID updatedBy) {
+    public void activate() {
         this.status = QueueStatus.ACTIVE;
     }
 
-    public void close(UUID updatedBy) {
+    public void close() {
         this.status = QueueStatus.CLOSED;
     }
 
-    public void ready(UUID updatedBy) {
+    public void ready() {
         this.status = QueueStatus.READY;
     }
 
