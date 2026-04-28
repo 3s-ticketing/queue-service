@@ -36,18 +36,6 @@ public class QueueHistory {
     @Column(name = "status", nullable = false, length = 30)
     private QueueExitReason exitReason;
 
-    // Factory Methods
-    public static QueueHistory create(UUID userId, UUID matchId, LocalDateTime enteredAt, QueueExitReason status) {
-        return new QueueHistory(
-                UUID.randomUUID(),
-                userId,
-                matchId,
-                enteredAt,
-                LocalDateTime.now(),
-                status
-        );
-    }
-
     /** 토큰 발급 성공 - 정상 통과 */
     public static QueueHistory ofPassed(UUID matchId, UUID userId, LocalDateTime enteredAt) {
         return new QueueHistory(
