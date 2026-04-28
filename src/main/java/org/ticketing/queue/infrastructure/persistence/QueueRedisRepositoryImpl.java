@@ -5,7 +5,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Repository;
-import org.ticketing.queue.domain.exception.QueueException;
+import org.ticketing.queue.domain.exception.NotFoundUserException;
+import org.ticketing.queue.domain.exception.SlotException;
+import org.ticketing.queue.domain.exception.TokenException;
 import org.ticketing.queue.domain.model.Queue;
 import org.ticketing.queue.domain.repository.QueueRedisRepository;
 import org.ticketing.queue.domain.repository.QueueRepository;
@@ -76,11 +78,9 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
 
         Double score = redisTemplate.opsForZSet().score(key, userId.toString());
 
+        // 대기열에 존재하지 않는 유저
         if (score == null) {
-            throw new QueueException(
-                    String.format("대기열에 존재하지 않는 유저입니다. matchId=%s, userId=%s", matchId, userId),
-                    HttpStatus.NOT_FOUND
-            );
+            throw new NotFoundUserException(matchId, userId);
         }
 
         return Instant.ofEpochMilli(score.longValue())
@@ -122,7 +122,7 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
         Long result = redisTemplate.execute(ACQUIRE_SLOT_SCRIPT, Collections.singletonList(key));
 
         if (result == null) {
-            throw new QueueException("Redis 슬롯 선점 결과가 null입니다.", HttpStatus.INTERNAL_SERVER_ERROR);
+            throw new SlotException("Redis 슬롯 선점 결과가 null입니다.", HttpStatus.INTERNAL_SERVER_ERROR);
         }
 
         return result >= 0;
@@ -137,10 +137,10 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
         Long result = redisTemplate.execute(RELEASE_SLOT_SCRIPT, List.of(availableKey, maxKey));
 
         if (result == null) {
-            throw new QueueException("슬롯 반환 결과가 null입니다.", HttpStatus.INTERNAL_SERVER_ERROR);
+            throw new SlotException("슬롯 반환 결과가 null입니다.", HttpStatus.INTERNAL_SERVER_ERROR);
         }
         if (result == -2) {
-            throw new QueueException("슬롯 정보가 초기화되지 않았습니다.", HttpStatus.INTERNAL_SERVER_ERROR);
+            throw new SlotException("슬롯 정보가 초기화되지 않았습니다.", HttpStatus.INTERNAL_SERVER_ERROR);
         }
         if (result == -1) {
             log.warn("[QUEUE] 슬롯 최대치 초과 반환 방지 matchId={}", matchId);
@@ -192,7 +192,7 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
         String token = redisTemplate.opsForValue().get(key);
 
         if (token == null) {
-            throw new QueueException("해당 토큰이 존재하지 않습니다.", HttpStatus.NOT_FOUND);
+            throw new TokenException(String.format("해당 토큰이 존재하지 않습니다. matchId = %s, userId = %s", matchId, userId));
         }
         return token;
     }

@@ -5,12 +5,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import org.ticketing.common.event.Events;
 import org.ticketing.queue.application.dto.command.QueueCreateCommand;
 import org.ticketing.queue.application.dto.command.QueueUpdateCommand;
 import org.ticketing.queue.application.dto.command.TokenValidateCommand;
@@ -18,14 +16,15 @@ import org.ticketing.queue.application.dto.query.QueueListQuery;
 import org.ticketing.queue.application.dto.result.QueueListResult;
 import org.ticketing.queue.application.dto.result.QueueResult;
 import org.ticketing.queue.domain.dto.QueueProjection;
-import org.ticketing.queue.domain.event.MatchApprovedEvent;
-import org.ticketing.queue.domain.exception.QueueException;
+import org.ticketing.queue.domain.exception.AlreadyInitQueueException;
+import org.ticketing.queue.domain.exception.AlreadyWatingQueueException;
+import org.ticketing.queue.domain.exception.TokenException;
 import org.ticketing.queue.domain.model.Queue;
 import org.ticketing.queue.domain.model.QueueExitReason;
 import org.ticketing.queue.domain.repository.QueueRedisRepository;
 import org.ticketing.queue.domain.repository.QueueRepository;
-import org.ticketing.queue.infrastructure.redis.pubsub.QueueRedisSubscriber;
 import org.ticketing.queue.infrastructure.persistence.SseEmitterRepository;
+import org.ticketing.queue.infrastructure.redis.pubsub.QueueRedisSubscriber;
 import org.ticketing.queue.presentation.dto.response.UserStatusResponse;
 
 import java.io.IOException;
@@ -65,16 +64,15 @@ public class QueueService {
 
     public UUID createQueue(QueueCreateCommand command) {
         if (queueRepository.existsByMatchId(command.matchId())) {
-            throw new QueueException("이미 해당 경기의 큐 설정이 존재합니다.", HttpStatus.BAD_REQUEST);
+            throw new AlreadyInitQueueException(command.matchId());
         }
-        UUID uuid = UUID.randomUUID();
+
         Queue queue = Queue.create(
                 UUID.randomUUID(),
                 command.matchId(),
                 command.maxActiveUsers(),
                 command.openAt()
         );
-        Events.trigger(uuid.toString(), "Queue", command.matchId().toString(), "match.approved", new MatchApprovedEvent(command.matchId()));
         return queueRepository.save(queue).getId();
     }
 
@@ -97,7 +95,7 @@ public class QueueService {
         boolean added = queueRedisRepository.entry(matchId, userId);
 
         if (!added) {
-            throw new QueueException("이미 대기열에서 대기중입니다.", HttpStatus.BAD_REQUEST);
+            throw new AlreadyWatingQueueException(matchId, userId);
         }
     }
 
@@ -196,11 +194,11 @@ public class QueueService {
 
         // 저장된 accessToken 불일치
         if (!token.equals(command.accessToken())) {
-            throw new QueueException("토큰이 불일치합니다.", HttpStatus.BAD_REQUEST);
+            throw new TokenException(String.format("토큰이 불일치합니다. token = %s", command.accessToken()));
         }
         // 만료 시간 체크
         if (expiredAt.isBefore(LocalDateTime.now())) {
-            throw new QueueException("만료된 토큰입니다.", HttpStatus.REQUEST_TIMEOUT);
+            throw new TokenException(String.format("만료된 토큰입니다. token = %s", command.accessToken()));
         }
     }
 }
