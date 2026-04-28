@@ -102,6 +102,8 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
         String maxKey = String.format(SLOTS_MAX_KEY, matchId);
         String availableKey = String.format(SLOTS_AVAILABLE_KEY, matchId);
 
+        queue.ready();
+
         redisTemplate.opsForValue().set(maxKey, String.valueOf(queue.getMaxActiveUsers()));
         redisTemplate.opsForValue().set(availableKey, String.valueOf(queue.getMaxActiveUsers()));
     }

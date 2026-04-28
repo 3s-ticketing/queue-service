@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 import org.ticketing.common.messaging.annotation.IdempotentConsumer;
 import org.ticketing.queue.domain.event.SlotsReleaseEvent;
 import org.ticketing.queue.domain.repository.QueueRedisRepository;
+import org.ticketing.queue.infrastructure.redis.stream.QueueStreamPublisher;
 
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
@@ -23,6 +24,7 @@ import java.util.UUID;
 public class ReservationEventConsumer {
 
     private final QueueRedisRepository queueRedisRepository;
+    private final QueueStreamPublisher queueStreamPublisher;
     private final ObjectMapper objectMapper;
 
     // 예매 완료/취소 - 슬롯 1개 증가
@@ -38,7 +40,15 @@ public class ReservationEventConsumer {
             MDC.put("traceId", traceId);
 
             event = objectMapper.readValue(record.value(), SlotsReleaseEvent.class);
-            queueRedisRepository.releaseSlot(UUID.fromString(event.matchId()));
+            UUID matchId = UUID.fromString(event.matchId());
+
+            // 슬롯 반환
+            queueRedisRepository.releaseSlot(matchId);
+            // 예매한 유저 토큰 삭제
+            queueRedisRepository.deletePassToken(matchId, UUID.fromString(event.userId()));
+            // Stream에 슬롯 반환 이벤트 발행
+            queueStreamPublisher.publishSlotReleased(matchId);
+
             ack.acknowledge(); // 정상 처리 후 ACK
 
         } catch (Exception e) {
