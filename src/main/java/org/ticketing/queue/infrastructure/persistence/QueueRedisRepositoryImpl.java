@@ -8,6 +8,7 @@ import org.springframework.stereotype.Repository;
 import org.ticketing.queue.domain.exception.NotFoundUserException;
 import org.ticketing.queue.domain.exception.SlotException;
 import org.ticketing.queue.domain.exception.TokenException;
+import org.ticketing.queue.domain.model.AcquireResult;
 import org.ticketing.queue.domain.model.Queue;
 import org.ticketing.queue.domain.repository.QueueRedisRepository;
 import org.ticketing.queue.domain.repository.QueueRepository;
@@ -15,12 +16,11 @@ import org.ticketing.queue.domain.repository.QueueRepository;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
-import static org.ticketing.queue.infrastructure.util.RuaScript.ACQUIRE_SLOT_SCRIPT;
+import static org.ticketing.queue.infrastructure.util.RuaScript.ACQUIRE_SLOT_AND_TOKEN_SCRIPT;
 import static org.ticketing.queue.infrastructure.util.RuaScript.RELEASE_SLOT_SCRIPT;
 
 @Repository
@@ -61,14 +61,6 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
     public Long getTotalCount(UUID matchId) {
         String key = getKey(matchId);
         return redisTemplate.opsForZSet().size(key);
-    }
-
-    // 유저가 대기열에 존재하는지 확인
-    @Override
-    public boolean exists(UUID matchId, UUID userId) {
-        String key = getKey(matchId);
-        Double score = redisTemplate.opsForZSet().score(key, userId.toString());
-        return score != null;
     }
 
     // 유저 대기열 진입 시간 조회
@@ -115,19 +107,6 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
         return value != null ? Long.parseLong(value) : 0L;
     }
 
-    // 슬롯 수 차감
-    @Override
-    public boolean acquireSlot(UUID matchId) {
-        String key = SLOTS_AVAILABLE_KEY.formatted(matchId);
-        Long result = redisTemplate.execute(ACQUIRE_SLOT_SCRIPT, Collections.singletonList(key));
-
-        if (result == null) {
-            throw new SlotException("Redis 슬롯 선점 결과가 null입니다.", HttpStatus.INTERNAL_SERVER_ERROR);
-        }
-
-        return result >= 0;
-    }
-
     // 슬롯 반환
     @Override
     public void releaseSlot(UUID matchId) {
@@ -150,18 +129,37 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
     }
 
     /**
-     * SET NX로 원자적 선점
-     * - 최초 호출 스레드만 true 반환
-     * - 이후 호출은 이미 키가 존재하므로 false 반환
+     * 결과에 따라 분기만 처리
+     * 원자적으로 슬롯+토큰 동시 획득
      */
     @Override
-    public boolean acquirePassToken(UUID matchId, UUID userId) {
-        String key = PASS_TOKEN_PREFIX + matchId + ":" + userId;
+    public AcquireResult acquireSlotAndToken(UUID matchId, UUID userId) {
+        String tokenKey = PASS_TOKEN_PREFIX + matchId + ":" + userId;
+        String availableKey = SLOTS_AVAILABLE_KEY.formatted(matchId);
+        long ttlSeconds = TOKEN_TTL_MINUTES * 60;
 
-        Boolean success = redisTemplate.opsForValue()
-                .setIfAbsent(key, PLACEHOLDER, TOKEN_TTL_MINUTES, TimeUnit.MINUTES); // SET NX EX
+        Long result = redisTemplate.execute(
+                ACQUIRE_SLOT_AND_TOKEN_SCRIPT,
+                List.of(tokenKey, availableKey),
+                String.valueOf(ttlSeconds),
+                PLACEHOLDER
+        );
 
-        return Boolean.TRUE.equals(success);
+        if (result == null) {
+            throw new SlotException("슬롯+토큰 선점 결과가 null입니다.",
+                    HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+
+        return switch (result.intValue()) {
+            case  1  -> AcquireResult.SUCCESS;
+            case -1  -> AcquireResult.NO_SLOT;
+            case -2  -> throw new SlotException("슬롯 미초기화",
+                    HttpStatus.INTERNAL_SERVER_ERROR);
+            case -3  -> AcquireResult.PENDING;
+            case -4  -> AcquireResult.ALREADY_ISSUED;
+            default  -> throw new SlotException("알 수 없는 결과: " + result,
+                    HttpStatus.INTERNAL_SERVER_ERROR);
+        };
     }
 
     // 토큰 조회 (PENDING이면 발급 중이므로 null 처리)

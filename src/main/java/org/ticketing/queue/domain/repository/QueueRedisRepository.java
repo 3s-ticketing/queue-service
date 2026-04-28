@@ -1,5 +1,7 @@
 package org.ticketing.queue.domain.repository;
 
+import org.ticketing.queue.domain.model.AcquireResult;
+
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -13,8 +15,6 @@ public interface QueueRedisRepository {
 
     Long getTotalCount(UUID matchId);
 
-    boolean exists(UUID matchId, UUID userId);
-
     LocalDateTime getEnteredAt(UUID matchId, UUID userId);
 
     void exit(UUID matchId, UUID userId);
@@ -25,13 +25,11 @@ public interface QueueRedisRepository {
 
     Long getAvailableSlots(UUID matchId);
 
-    boolean acquireSlot(UUID matchId);
-
     void releaseSlot(UUID matchId);
 
-    // ── 통과 토큰 관리 ───────────────────────────────────────────────────
+    AcquireResult acquireSlotAndToken(UUID matchId, UUID userId);
 
-    boolean acquirePassToken(UUID matchId, UUID userId);
+    // ── 통과 토큰 관리 ───────────────────────────────────────────────────
 
     String getPassToken(UUID matchId, UUID userId);
 
