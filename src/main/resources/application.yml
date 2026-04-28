@@ -54,9 +54,21 @@ eureka:
 
 queue:
   token:
-    secret: ${QUEUE_TOKEN_SECRET:aUpW71xa0Tn+otrFrnAbF3c+G4MH4QDXjZvTjvE+3D8=}
+    secret: ${QUEUE_TOKEN_SECRET}
 
   # Outbox 스케줄러 (실패 메시지 재시도)
   outbox:
     scheduler:
-      fixed-delay: 60000           # 60초마다 PENDING/FAILED 재시도
+      fixed-delay: 60000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  tracing:
+    sampling:
+      probability: 0.1
+  zipkin:
+    tracing:
+      endpoint: http://zipkin:9411/api/v2/spans
