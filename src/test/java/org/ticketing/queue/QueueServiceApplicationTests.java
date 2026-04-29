@@ -38,6 +38,10 @@ class QueueServiceApplicationTests {
     @MockitoBean
     private KafkaTemplate<Object, Object> kafkaTemplate;
 
+    // Events(공통모듈)용
+    @MockitoBean
+    private KafkaTemplate<String, Object> kafkaStringTemplate;
+    
     @Test
     void contextLoads() {
     }
