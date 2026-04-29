@@ -8,11 +8,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.context.annotation.Import;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.ticketing.queue.application.dto.command.QueueCreateCommand;
 import org.ticketing.queue.application.dto.command.TokenValidateCommand;
-import org.ticketing.queue.config.TestRedisConfig;
 import org.ticketing.queue.domain.exception.AlreadyBannedUserException;
 import org.ticketing.queue.domain.exception.AlreadyInitQueueException;
 import org.ticketing.queue.domain.exception.AlreadyWatingQueueException;
@@ -37,7 +35,6 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-@Import(TestRedisConfig.class)
 class QueueServiceTest {
 
     @Mock
