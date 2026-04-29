@@ -9,6 +9,6 @@ public class NotFoundUserException extends CustomException {
 
     public NotFoundUserException(UUID matchId, UUID userId) {
         super(String.format("대기열에 존재하지 않는 유저입니다. matchId=%s, userId=%s",
-                matchId, userId), HttpStatus.BAD_REQUEST);
+                matchId, userId), HttpStatus.NOT_FOUND);
     }
 }

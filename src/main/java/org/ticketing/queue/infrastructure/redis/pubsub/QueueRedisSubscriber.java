@@ -11,7 +11,6 @@ import org.ticketing.queue.application.service.QueueHistoryService;
 import org.ticketing.queue.domain.model.AcquireResult;
 import org.ticketing.queue.domain.model.QueueExitReason;
 import org.ticketing.queue.domain.model.QueueToken;
-import org.ticketing.queue.domain.repository.QueueHistoryRepository;
 import org.ticketing.queue.domain.repository.QueueRedisRepository;
 import org.ticketing.queue.domain.service.QueueTokenDomainService;
 import org.ticketing.queue.infrastructure.persistence.SseEmitterRepository;
@@ -30,7 +29,6 @@ public class QueueRedisSubscriber implements MessageListener {
     private final QueueHistoryService queueHistoryService;
     private final QueueRedisRepository queueRedisRepository;
     private final QueueTokenDomainService queueTokenDomainService;
-    private final QueueHistoryRepository queueHistoryRepository;
     private final SseEmitterRepository sseEmitterRepository;
     private final ObjectMapper objectMapper;
 
@@ -145,6 +143,6 @@ public class QueueRedisSubscriber implements MessageListener {
         if (enteredAt == null) {
             enteredAt = queueRedisRepository.getEnteredAt(matchId, userId);
         }
-        queueHistoryService.record(matchId, userId, enteredAt, QueueExitReason.PASSED);
+        queueHistoryService.record(matchId, userId, enteredAt, reason);
     }
 }

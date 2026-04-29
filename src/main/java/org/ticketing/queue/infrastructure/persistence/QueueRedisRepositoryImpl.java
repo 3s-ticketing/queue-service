@@ -7,10 +7,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Repository;
-import org.ticketing.queue.domain.exception.BannedUserException;
-import org.ticketing.queue.domain.exception.NotFoundUserException;
-import org.ticketing.queue.domain.exception.SlotException;
-import org.ticketing.queue.domain.exception.TokenException;
+import org.ticketing.queue.domain.exception.*;
 import org.ticketing.queue.domain.model.AcquireResult;
 import org.ticketing.queue.domain.model.Queue;
 import org.ticketing.queue.domain.repository.QueueRedisRepository;
@@ -50,30 +47,29 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
     public boolean entry(UUID matchId, UUID userId) {
         String queueKey = getKey(matchId);
         String sequenceKey = getSeqKey(matchId);
+        String bannedKey = getBannedKey(matchId, userId);
+        String enteredAtKey = getEnteredAtKey(matchId, userId);
 
-        // 차단된 유저 진입 차단
-        if (isBanned(matchId, userId)) {
-            throw new BannedUserException(matchId, userId);
-        }
-
+        /**
+         * 차단된 유저 진입 차단
+         * 진입 성공 시 입장 시각 저장
+         * 대기 순번 증가
+         */
         Long result = redisTemplate.execute(
                 ENTRY_SCRIPT,
-                List.of(queueKey, sequenceKey),
-                userId.toString()
+                List.of(queueKey, sequenceKey, bannedKey, enteredAtKey),
+                userId.toString(),
+                String.valueOf(System.currentTimeMillis())
         );
 
-        boolean entry = Long.valueOf(1L).equals(result);
-
-        // 진입 성공 시 입장 시각 별도 저장
-        if (entry) {
-            String enteredAtKey = getEnteredAtKey(matchId, userId);
-            redisTemplate.opsForValue().set(
-                    enteredAtKey,
-                    String.valueOf(System.currentTimeMillis())
-            );
+        if (Long.valueOf(-1L).equals(result)) {
+            throw new BannedUserException(matchId, userId);
+        }
+        if (Long.valueOf(0L).equals(result)) {
+            throw new AlreadyWatingQueueException(matchId, userId);
         }
 
-        return entry;
+        return Long.valueOf(1L).equals(result);
     }
 
     // 유저의 현재 순번 조회 (0부터 시작하므로 +1)

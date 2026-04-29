@@ -39,7 +39,7 @@ public class QueueRepositoryImpl implements QueueRepository {
     @Override
     public Queue findByMatchId(UUID matchId) {
         return jpaQueueRepository.findByMatchId(matchId)
-                .orElseThrow(() -> new QueueNotFoundException(matchId.toString()));
+                .orElseThrow(() -> new QueueNotFoundException(String.valueOf(matchId)));
     }
 
     @Override

@@ -26,10 +26,6 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
 
-    defaults:
-      run:
-        working-directory: ./queue-service
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

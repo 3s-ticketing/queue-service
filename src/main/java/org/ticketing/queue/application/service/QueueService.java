@@ -202,11 +202,11 @@ public class QueueService {
 
         // 저장된 accessToken 불일치
         if (!token.equals(command.accessToken())) {
-            throw new TokenException(String.format("토큰이 불일치합니다. token = %s", command.accessToken()));
+            throw new TokenException("토큰이 불일치합니다.");
         }
         // 만료 시간 체크
         if (expiredAt.isBefore(LocalDateTime.now())) {
-            throw new TokenException(String.format("만료된 토큰입니다. token = %s", command.accessToken()));
+            throw new TokenException("만료된 토큰입니다.");
         }
     }
 

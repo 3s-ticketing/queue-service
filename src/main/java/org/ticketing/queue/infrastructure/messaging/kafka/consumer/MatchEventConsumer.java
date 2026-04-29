@@ -71,7 +71,7 @@ public class MatchEventConsumer {
 
         } catch (Exception e) {
             String matchIdLog = (event != null && event.matchId() != null) ? event.matchId().toString() : "unknown";
-            log.error("[queue-service] 슬롯 반환 실패. matchId={}", matchIdLog, e);
+            log.error("[queue-service] DLT 처리 실패. matchId={}", matchIdLog, e);
 
         } finally {
             MDC.clear();

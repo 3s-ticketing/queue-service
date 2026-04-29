@@ -8,9 +8,17 @@ public class RuaScript {
     public static final RedisScript<Long> ENTRY_SCRIPT = RedisScript.of("""
         local queueKey = KEYS[1]
         local sequenceKey = KEYS[2]
+        local bannedKey = KEYS[3]
+        local enteredAtKey = KEYS[4]
         local userId = ARGV[1]
+        local now = ARGV[2]
         
-        -- 이미 존재하면 0 반환
+        -- 차단된 유저 확인
+        if redis.call('EXISTS', bannedKey) == 1 then
+            return -1
+        end
+        
+        -- 이미 대기열에 존재하면 0 반환
         if redis.call('ZSCORE', queueKey, userId) then
             return 0
         end
@@ -18,6 +26,10 @@ public class RuaScript {
         -- sequence 증가 후 ZSet에 추가
         local seq = redis.call('INCR', sequenceKey)
         redis.call('ZADD', queueKey, seq, userId)
+        
+        -- enteredAt 원자적으로 저장
+        redis.call('SET', enteredAtKey, now)
+        
         return 1
         """, Long.class);
 
@@ -56,6 +68,7 @@ public class RuaScript {
                     """,
                     Long.class
             );
+
 
     public static final DefaultRedisScript<Long> RELEASE_SLOT_SCRIPT =
             new DefaultRedisScript<>(
