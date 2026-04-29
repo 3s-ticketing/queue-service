@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.ticketing.queue.domain.repository.BannedUserRepository;
 import org.ticketing.queue.domain.repository.QueueRedisRepository;
@@ -32,6 +33,10 @@ class QueueServiceApplicationTests {
     // QueueStreamPublisher가 StringRedisTemplate 주입받음
     @MockitoBean
     private StringRedisTemplate stringRedisTemplate;
+
+    // KafkaConfig가 KafkaTemplate<Object, Object> 주입받음
+    @MockitoBean
+    private KafkaTemplate<Object, Object> kafkaTemplate;
 
     @Test
     void contextLoads() {
