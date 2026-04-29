@@ -2,9 +2,6 @@ name: Queue Service CI
 
 on:
   pull_request:
-    paths:
-      - 'queue-service/**'
-      - '.github/workflows/queue-service-ci.yml'
     branches:
       - dev
       - main
