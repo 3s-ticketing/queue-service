@@ -11,14 +11,17 @@ public record QueueCreateRequest(
         UUID matchId,
         @NotNull(message = "최대 활성 유저수를 입력해주세요.")
         Integer maxActiveUsers,
-        @NotNull(message = "대기열 활성 일시를 입력해주세요.")
-        LocalDateTime openAt
+        @NotNull(message = "대기열 오픈 일시를 입력해주세요.")
+        LocalDateTime openAt,
+        @NotNull(message = "대기열 만료 일시를 입력해주세요.")
+        LocalDateTime expiredAt
 ) {
     public static QueueCreateCommand toCommand(QueueCreateRequest request) {
         return new QueueCreateCommand(
                 request.matchId,
                 request.maxActiveUsers,
-                request.openAt
+                request.openAt,
+                request.expiredAt
         );
     }
 }

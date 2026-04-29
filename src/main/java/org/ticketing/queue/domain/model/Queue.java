@@ -42,13 +42,17 @@ public class Queue extends BaseEntity {
     @Column(name = "open_at", nullable = false)
     private LocalDateTime openAt;
 
-    public static Queue create(UUID id, UUID matchId, int maxActiveUsers, LocalDateTime openAt) {
+    @Column(name = "expired_at", nullable = false)
+    private LocalDateTime expiredAt;
+
+    public static Queue create(UUID id, UUID matchId, int maxActiveUsers, LocalDateTime openAt, LocalDateTime expiredAt) {
         return new Queue(
                 id,
                 matchId,
                 maxActiveUsers,
                 QueueStatus.CLOSED,
-                openAt
+                openAt,
+                expiredAt
         );
     }
 
@@ -74,5 +78,4 @@ public class Queue extends BaseEntity {
     public void ready() {
         this.status = QueueStatus.READY;
     }
-
 }

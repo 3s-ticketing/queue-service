@@ -14,8 +14,10 @@ import org.ticketing.queue.domain.dto.QueueProjection;
 import org.ticketing.queue.domain.dto.QueueSearchCondition;
 import org.ticketing.queue.domain.exception.QueueNotFoundException;
 import org.ticketing.queue.domain.model.Queue;
+import org.ticketing.queue.domain.model.QueueStatus;
 import org.ticketing.queue.domain.repository.QueueRepository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -95,6 +97,16 @@ public class QueueRepositoryImpl implements QueueRepository {
     @Override
     public boolean existsByMatchId(UUID matchId) {
         return jpaQueueRepository.existsByMatchId(matchId);
+    }
+
+    @Override
+    public List<Queue> findAllByStatusAndOpenAtBefore(QueueStatus status, LocalDateTime openAt) {
+        return jpaQueueRepository.findAllByStatusAndOpenAtBefore(status, openAt);
+    }
+
+    @Override
+    public List<Queue> findAllByStatusAndExpiredAtBefore(QueueStatus status, LocalDateTime expiredAt) {
+        return jpaQueueRepository.findAllByStatusAndExpiredAtBefore(status, expiredAt);
     }
 
     private OrderSpecifier<?>[] getOrderSpecifiers(Sort sort) {

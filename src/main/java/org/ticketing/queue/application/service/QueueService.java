@@ -76,7 +76,8 @@ public class QueueService {
                 UUID.randomUUID(),
                 command.matchId(),
                 command.maxActiveUsers(),
-                command.openAt()
+                command.openAt(),
+                command.expiredAt()
         );
         return queueRepository.save(queue).getId();
     }
