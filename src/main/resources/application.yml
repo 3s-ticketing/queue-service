@@ -32,13 +32,21 @@ spring:
     consumer:
       group-id: queue-service
       auto-offset-reset: earliest
+      enable-auto-commit: false
+      max-poll-records: 10
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
-      enable-auto-commit: false    # 수동 커밋 (메시지 처리 보장)
       properties:
         spring.json.trusted.packages: "*"
+        session.timeout.ms: 15000
+        heartbeat.interval.ms: 5000
+        retry.backoff.ms: 2000
+        isolation.level: read_committed
     listener:
-      ack-mode: manual             # 수동 ACK
+      ack-mode: manual
+      concurrency: 3
+      missing-topics-fatal: false
+      observation-enabled: true
 
 eureka:
   client:
@@ -51,4 +59,16 @@ queue:
   # Outbox 스케줄러 (실패 메시지 재시도)
   outbox:
     scheduler:
-      fixed-delay: 60000           # 60초마다 PENDING/FAILED 재시도
+      fixed-delay: 60000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  tracing:
+    sampling:
+      probability: 0.1
+  zipkin:
+    tracing:
+      endpoint: http://zipkin:9411/api/v2/spans

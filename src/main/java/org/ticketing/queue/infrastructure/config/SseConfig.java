@@ -28,7 +28,7 @@ public class SseConfig implements WebMvcConfigurer {
     @Bean
     public ThreadPoolTaskScheduler taskScheduler() {
         ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
-        scheduler.setPoolSize(50);
+        scheduler.setPoolSize(30);
         scheduler.setThreadNamePrefix("sse-scheduler-");
         scheduler.setWaitForTasksToCompleteOnShutdown(true);
         scheduler.setAwaitTerminationSeconds(30);

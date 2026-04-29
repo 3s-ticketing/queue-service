@@ -97,11 +97,12 @@ public class QueueController {
     }
 
     /**
-     * 대기열 통과 검증
+     * 대기열 토큰 검증
      * GET /api/queues/{matchId}/validation
      * Role : INTERNAL
      */
     @GetMapping("/{matchId}/validation")
     public void validation(@PathVariable("matchId") UUID matchId, @RequestBody TokenValidateRequest request) {
+        queueService.validate(TokenValidateRequest.toCommand(request, matchId));
     }
 }

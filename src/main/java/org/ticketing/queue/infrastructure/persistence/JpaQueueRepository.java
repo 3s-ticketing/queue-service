@@ -8,4 +8,8 @@ import java.util.UUID;
 
 public interface JpaQueueRepository extends JpaRepository<Queue, UUID> {
     Optional<Queue> findByIdAndDeletedAtIsNull(UUID queueId);
+
+    Optional<Queue> findByMatchId(UUID matchId);
+
+    boolean existsByMatchId(UUID matchId);
 }

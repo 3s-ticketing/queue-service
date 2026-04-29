@@ -6,7 +6,9 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Repository;
 import org.ticketing.queue.domain.exception.QueueException;
+import org.ticketing.queue.domain.model.Queue;
 import org.ticketing.queue.domain.repository.QueueRedisRepository;
+import org.ticketing.queue.domain.repository.QueueRepository;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -25,6 +27,7 @@ import static org.ticketing.queue.infrastructure.util.RuaScript.RELEASE_SLOT_SCR
 public class QueueRedisRepositoryImpl implements QueueRedisRepository {
 
     private final RedisTemplate<String, String> redisTemplate;
+    private final QueueRepository queueRepository;
 
     private static final String QUEUE_KEY = "queue:%s"; // queue:{matchId}
     private static final String SLOTS_MAX_KEY  = "queue:slots:max:%s";  // 최대 슬롯
@@ -92,9 +95,17 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
         redisTemplate.opsForZSet().remove(key, userId.toString());
     }
 
+    // 최대 슬롯, 사용 가능한 슬롯 초기 설정
     @Override
-    public void initSlots(UUID matchId, int maxActiveUsers) {
+    public void initSlots(UUID matchId) {
+        Queue queue = queueRepository.findByMatchId(matchId);
+        String maxKey = String.format(SLOTS_MAX_KEY, matchId);
+        String availableKey = String.format(SLOTS_AVAILABLE_KEY, matchId);
 
+        queue.ready();
+
+        redisTemplate.opsForValue().set(maxKey, String.valueOf(queue.getMaxActiveUsers()));
+        redisTemplate.opsForValue().set(availableKey, String.valueOf(queue.getMaxActiveUsers()));
     }
 
     // 사용가능한 슬롯 수 확인
@@ -133,7 +144,9 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
         }
         if (result == -1) {
             log.warn("[QUEUE] 슬롯 최대치 초과 반환 방지 matchId={}", matchId);
+            return;
         }
+        log.info("[queue-service] 대기열 슬롯 반환: {}", matchId);
     }
 
     /**
@@ -173,6 +186,23 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
         redisTemplate.delete(PASS_TOKEN_PREFIX + matchId + ":" + userId);
     }
 
+    @Override
+    public String findPassToken(UUID matchId, UUID userId) {
+        String key = PASS_TOKEN_PREFIX + matchId + ":" + userId;
+        String token = redisTemplate.opsForValue().get(key);
+
+        if (token == null) {
+            throw new QueueException("해당 토큰이 존재하지 않습니다.", HttpStatus.NOT_FOUND);
+        }
+        return token;
+    }
+
+    @Override
+    public LocalDateTime getExpiredAt(UUID matchId, UUID userId) {
+        String key = PASS_TOKEN_PREFIX + matchId + ":" + userId;
+        Long ttlSeconds = redisTemplate.getExpire(key, TimeUnit.SECONDS);
+        return LocalDateTime.now().plusSeconds(ttlSeconds);
+    }
 
     private String getKey(UUID matchId) {
         return String.format(QUEUE_KEY, matchId);
