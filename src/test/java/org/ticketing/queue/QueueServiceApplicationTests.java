@@ -3,6 +3,7 @@ package org.ticketing.queue;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.ticketing.queue.domain.repository.BannedUserRepository;
 import org.ticketing.queue.domain.repository.QueueRedisRepository;
@@ -27,6 +28,10 @@ class QueueServiceApplicationTests {
 
     @MockitoBean
     private BannedUserRepository bannedUserRepository;
+
+    // QueueStreamPublisher가 StringRedisTemplate 주입받음
+    @MockitoBean
+    private StringRedisTemplate stringRedisTemplate;
 
     @Test
     void contextLoads() {
