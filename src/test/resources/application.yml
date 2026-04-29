@@ -23,6 +23,10 @@ eureka:
     register-with-eureka: false
     fetch-registry: false
 
+redis:
+  listener:
+    enabled: false
+
 queue:
   token:
     secret: ${QUEUE_TOKEN_SECRET}
