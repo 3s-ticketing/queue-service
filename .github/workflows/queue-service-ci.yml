@@ -45,3 +45,21 @@ jobs:
           GPR_USER: ${{ github.actor }}
           GPR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./gradlew clean test
+
+      - name: Print failed test logs
+        if: failure()
+        run: |
+          find . -path "*/TEST-*.xml" | xargs grep -l "failures=\"[1-9]\|errors=\"[1-9]\"" | while read f; do
+            echo "===== $f ====="
+            cat "$f"
+          done
+
+      - name: Upload test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: |
+            build/reports/tests/test/
+            build/reports/problems/
+          retention-days: 3
