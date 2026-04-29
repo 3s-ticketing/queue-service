@@ -1,8 +1,26 @@
 package org.ticketing.queue.infrastructure.util;
 
 import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.data.redis.core.script.RedisScript;
 
 public class RuaScript {
+
+    public static final RedisScript<Long> ENTRY_SCRIPT = RedisScript.of("""
+        local queueKey = KEYS[1]
+        local sequenceKey = KEYS[2]
+        local userId = ARGV[1]
+        
+        -- 이미 존재하면 0 반환
+        if redis.call('ZSCORE', queueKey, userId) then
+            return 0
+        end
+        
+        -- sequence 증가 후 ZSet에 추가
+        local seq = redis.call('INCR', sequenceKey)
+        redis.call('ZADD', queueKey, seq, userId)
+        return 1
+        """, Long.class);
+
 
     public static final DefaultRedisScript<Long> ACQUIRE_SLOT_AND_TOKEN_SCRIPT =
             new DefaultRedisScript<>(

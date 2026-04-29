@@ -23,8 +23,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
-import static org.ticketing.queue.infrastructure.util.RuaScript.ACQUIRE_SLOT_AND_TOKEN_SCRIPT;
-import static org.ticketing.queue.infrastructure.util.RuaScript.RELEASE_SLOT_SCRIPT;
+import static org.ticketing.queue.infrastructure.util.RuaScript.*;
 
 @Repository
 @Slf4j
@@ -43,23 +42,22 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
     private static final String PLACEHOLDER = "PENDING";   // 토큰 발급 전 선점 표시
     private static final long TOKEN_TTL_MINUTES = 10L;
 
-    // 유저 대기열 진입 (score = 진입 시각)
+    // 유저 대기열 진입 (QUEUE_SEQUENCE_KEY 순번 증가)
     @Override
     public boolean entry(UUID matchId, UUID userId) {
-        String key = getSeqKey(matchId);
+        String queueKey = getKey(matchId);
+        String sequenceKey = getSeqKey(matchId);
 
-        Long sequence = redisTemplate.opsForValue().increment(key);
-
-        boolean added = Boolean.TRUE.equals(
-                redisTemplate.opsForZSet().addIfAbsent(
-                        key,
-                        userId.toString(),
-                        sequence.doubleValue()
-                )
+        Long result = redisTemplate.execute(
+                ENTRY_SCRIPT,
+                List.of(queueKey, sequenceKey),
+                userId.toString()
         );
 
+        boolean entry = Long.valueOf(1L).equals(result);
+
         // 진입 성공 시 입장 시각 별도 저장
-        if (added) {
+        if (entry) {
             String enteredAtKey = getEnteredAtKey(matchId, userId);
             redisTemplate.opsForValue().set(
                     enteredAtKey,
@@ -67,7 +65,7 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
             );
         }
 
-        return added;
+        return entry;
     }
 
     // 유저의 현재 순번 조회 (0부터 시작하므로 +1)
