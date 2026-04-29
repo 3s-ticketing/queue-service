@@ -2,20 +2,17 @@ package org.ticketing.queue;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.ticketing.queue.config.TestRedisConfig;
 import org.ticketing.queue.domain.repository.BannedUserRepository;
 import org.ticketing.queue.domain.repository.QueueRedisRepository;
 import org.ticketing.queue.infrastructure.persistence.SseEmitterRepository;
 import org.ticketing.queue.infrastructure.redis.pubsub.QueueRedisSubscriber;
 
 @SpringBootTest
-@Import(TestRedisConfig.class)
 class QueueServiceApplicationTests {
 
     // RedisConfig가 RedisConnectionFactory를 찾으므로 MockBean으로 제공
