@@ -11,17 +11,19 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.ticketing.queue.application.dto.command.QueueCreateCommand;
 import org.ticketing.queue.application.dto.command.TokenValidateCommand;
+import org.ticketing.queue.domain.exception.AlreadyBannedUserException;
 import org.ticketing.queue.domain.exception.AlreadyInitQueueException;
 import org.ticketing.queue.domain.exception.AlreadyWatingQueueException;
 import org.ticketing.queue.domain.exception.TokenException;
+import org.ticketing.queue.domain.model.BannedUser;
 import org.ticketing.queue.domain.model.Queue;
 import org.ticketing.queue.domain.model.QueueExitReason;
+import org.ticketing.queue.domain.repository.BannedUserRepository;
 import org.ticketing.queue.domain.repository.QueueRedisRepository;
 import org.ticketing.queue.domain.repository.QueueRepository;
 import org.ticketing.queue.infrastructure.persistence.SseEmitterRepository;
-import org.ticketing.queue.domain.exception.AlreadyBannedUserException;
-import org.ticketing.queue.domain.model.BannedUser;
-import org.ticketing.queue.domain.repository.BannedUserRepository;
+import org.ticketing.queue.infrastructure.redis.pubsub.QueueRedisSubscriber;
+import org.ticketing.queue.presentation.dto.response.UserStatusResponse;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -49,6 +51,9 @@ class QueueServiceTest {
 
     @Mock
     private SseEmitterRepository sseEmitterRepository;
+
+    @Mock
+    private QueueRedisSubscriber queueRedisSubscriber;
 
     @Mock
     private ObjectMapper objectMapper;
@@ -225,12 +230,16 @@ class QueueServiceTest {
             UUID matchId = UUID.randomUUID();
             UUID userId = UUID.randomUUID();
 
+            // rank(10) > availableSlots(5) → else 분기 → sendEvent() 호출
             when(queueRedisRepository.getRank(matchId, userId)).thenReturn(10L);
             when(queueRedisRepository.getTotalCount(matchId)).thenReturn(100L);
             when(queueRedisRepository.getAvailableSlots(matchId)).thenReturn(5L);
 
             when(objectMapper.writeValueAsString(any()))
-                    .thenReturn("{\"status\":\"WAITING\"}");
+                    .thenReturn("{\"status\":\"WAITING\",\"rank\":10,\"totalCount\":100}");
+
+            doNothing().when(sseEmitterRepository)
+                    .save(eq(matchId), eq(userId), any(SseEmitter.class));
 
             // when
             SseEmitter emitter = queueService.subscribe(matchId, userId);
@@ -239,6 +248,35 @@ class QueueServiceTest {
             assertThat(emitter).isNotNull();
 
             verify(sseEmitterRepository).save(eq(matchId), eq(userId), any(SseEmitter.class));
+            verify(queueRedisSubscriber, never())
+                    .pushStatus(any(), any(), any(), any(), any());
+            verify(objectMapper).writeValueAsString(any(UserStatusResponse.class));
+        }
+        @Test
+        @DisplayName("슬롯 범위 내 즉시 토큰 발급 시도")
+        void subscribe_immediateTokenIssue() throws Exception {
+            // given
+            UUID matchId = UUID.randomUUID();
+            UUID userId = UUID.randomUUID();
+
+            // rank(3) <= availableSlots(5) → if 분기 → pushStatus() 호출
+            when(queueRedisRepository.getRank(matchId, userId)).thenReturn(3L);
+            when(queueRedisRepository.getTotalCount(matchId)).thenReturn(100L);
+            when(queueRedisRepository.getAvailableSlots(matchId)).thenReturn(5L);
+
+            doNothing().when(sseEmitterRepository)
+                    .save(eq(matchId), eq(userId), any(SseEmitter.class));
+
+            // when
+            SseEmitter emitter = queueService.subscribe(matchId, userId);
+
+            // then
+            assertThat(emitter).isNotNull();
+
+            verify(sseEmitterRepository).save(eq(matchId), eq(userId), any(SseEmitter.class));
+            verify(queueRedisSubscriber)
+                    .pushStatus(eq(matchId), eq(userId), any(SseEmitter.class), eq(3L), eq(100L));
+            verify(objectMapper, never()).writeValueAsString(any());
         }
     }
 
