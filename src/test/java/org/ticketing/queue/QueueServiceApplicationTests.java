@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.ticketing.queue.domain.repository.BannedUserRepository;
@@ -41,7 +42,11 @@ class QueueServiceApplicationTests {
     // Events(공통모듈)용
     @MockitoBean
     private KafkaTemplate<String, Object> kafkaStringTemplate;
-    
+
+    // QueuePubSubConfig의 redisMessageListenerContainer를 Mock으로 덮어씀
+    @MockitoBean(name = "redisMessageListenerContainer")
+    private RedisMessageListenerContainer redisMessageListenerContainer;
+
     @Test
     void contextLoads() {
     }
