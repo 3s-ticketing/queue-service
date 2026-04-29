@@ -1,0 +1,54 @@
+spring:
+  application:
+    name: queue-service
+
+  cache:
+    type: redis
+
+  cloud:
+    discovery:
+      enabled: false
+    config:
+      import-check:
+        enabled: false
+
+  jpa:
+    hibernate:
+      ddl-auto: ${JPA_DDL_AUTO:create}
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all                    # 모든 replica 확인 후 응답 (데이터 유실 방지)
+      retries: 3
+      properties:
+        enable.idempotence: true   # 중복 전송 방지
+        max.in.flight.requests.per.connection: 1
+    consumer:
+      group-id: queue-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      enable-auto-commit: false    # 수동 커밋 (메시지 처리 보장)
+      properties:
+        spring.json.trusted.packages: "*"
+    listener:
+      ack-mode: manual             # 수동 ACK
+
+eureka:
+  client:
+    enabled: false
+
+queue:
+  token:
+    secret: ${QUEUE_TOKEN_SECRET}
+
+  # Outbox 스케줄러 (실패 메시지 재시도)
+  outbox:
+    scheduler:
+      fixed-delay: 60000           # 60초마다 PENDING/FAILED 재시도

@@ -5,7 +5,7 @@ import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.iimsa.common.domain.BaseEntity;
+import org.ticketing.common.domain.BaseEntity;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -34,12 +34,12 @@ public class Queue extends BaseEntity {
     @Column(name = "open_at", nullable = false)
     private LocalDateTime openAt;
 
-    public static Queue create(UUID id, UUID matchId, int maxActiveUsers, QueueStatus status, LocalDateTime openAt) {
+    public static Queue create(UUID id, UUID matchId, int maxActiveUsers, LocalDateTime openAt) {
         return new Queue(
                 id,
                 matchId,
                 maxActiveUsers,
-                status,
+                QueueStatus.CLOSED,
                 openAt
         );
     }

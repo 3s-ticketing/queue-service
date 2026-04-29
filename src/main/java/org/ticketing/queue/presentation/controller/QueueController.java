@@ -2,16 +2,17 @@ package org.ticketing.queue.presentation.controller;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.iimsa.common.response.CommonResponse;
 import org.springframework.data.domain.Pageable;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.ticketing.queue.application.dto.result.QueueListResult;
 import org.ticketing.queue.application.service.QueueService;
 import org.ticketing.queue.presentation.dto.request.QueueCreateRequest;
 import org.ticketing.queue.presentation.dto.request.QueueListGetRequest;
 import org.ticketing.queue.presentation.dto.request.QueueUpdateRequest;
+import org.ticketing.queue.presentation.dto.request.TokenValidateRequest;
+import org.ticketing.queue.presentation.dto.response.QueueIdResponse;
 import org.ticketing.queue.presentation.dto.response.QueueListResponse;
 import org.ticketing.queue.presentation.dto.response.QueueResponse;
 
@@ -30,12 +31,8 @@ public class QueueController {
      * Role : ADMIN
      */
     @GetMapping("/{queueId}")
-    public ResponseEntity<CommonResponse<QueueResponse>> getQueue(@PathVariable("queueId") UUID queueId) {
-        QueueResponse response = QueueResponse.from(queueService.getQueue(queueId));
-
-        return ResponseEntity
-                .status(HttpStatus.OK)
-                .body(CommonResponse.success(response));
+    public QueueResponse getQueue(@PathVariable("queueId") UUID queueId) {
+        return QueueResponse.from(queueService.getQueue(queueId));
     }
 
     /**
@@ -44,12 +41,9 @@ public class QueueController {
      * Role : ADMIN
      */
     @GetMapping
-    public ResponseEntity<CommonResponse<QueueListResponse>> getQueueList(@ModelAttribute QueueListGetRequest request, Pageable pageable) {
+    public QueueListResponse getQueueList(@ModelAttribute QueueListGetRequest request, Pageable pageable) {
         QueueListResult listResult = queueService.getQueueList(QueueListGetRequest.toQuery(request), pageable);
-
-        return ResponseEntity
-                .status(HttpStatus.OK)
-                .body(CommonResponse.success(QueueListResponse.from(listResult)));
+        return QueueListResponse.from(listResult);
     }
 
     /**
@@ -58,12 +52,9 @@ public class QueueController {
      * Role : ADMIN
      */
     @PostMapping
-    public ResponseEntity<CommonResponse<UUID>> createQueue(@Valid @RequestBody QueueCreateRequest request) {
+    public QueueIdResponse createQueue(@Valid @RequestBody QueueCreateRequest request) {
         UUID queueId = queueService.createQueue(QueueCreateRequest.toCommand(request));
-
-        return ResponseEntity
-                .status(HttpStatus.OK)
-                .body(CommonResponse.success(queueId));
+        return QueueIdResponse.from(queueId);
     }
 
     /**
@@ -72,12 +63,9 @@ public class QueueController {
      * Role : ADMIN
      */
     @PutMapping("/{queueId}")
-    public ResponseEntity<CommonResponse<UUID>> updateQueue(@PathVariable("queueId") UUID queueId, @Valid @RequestBody QueueUpdateRequest request) {
+    public QueueIdResponse updateQueue(@PathVariable("queueId") UUID queueId, @Valid @RequestBody QueueUpdateRequest request) {
         queueService.updateQueue(queueId, QueueUpdateRequest.toCommand(request));
-
-        return ResponseEntity
-                .status(HttpStatus.OK)
-                .body(CommonResponse.success(queueId));
+        return QueueIdResponse.from(queueId);
     }
 
     /**
@@ -86,12 +74,34 @@ public class QueueController {
      * Role : ADMIN
      */
     @DeleteMapping("/{queueId}")
-    public ResponseEntity<CommonResponse<Void>> deleteQueue(@PathVariable("queueId") UUID queueId, @RequestHeader("X-User-Id") UUID userId) {
+    public void deleteQueue(@PathVariable("queueId") UUID queueId, @RequestHeader("X-User-Id") UUID userId) {
         queueService.deleteQueue(queueId, userId);
-
-        return ResponseEntity
-                .status(HttpStatus.OK)
-                .body(CommonResponse.success(null));
     }
 
+    /**
+     * 대기열 진입
+     * POST /api/queues/{matchId}/entry
+     */
+    @PostMapping("/{matchId}/entry")
+    public void entry(@PathVariable("matchId") UUID matchId, @RequestHeader("X-User-Id") UUID userId) {
+        queueService.entry(matchId, userId);
+    }
+
+    /**
+     * SSE 구독 - 클라이언트가 연결하면 서버가 주기적으로 대기 상태를 push
+     * GET /api/queues/{matchId}/status
+     */
+    @GetMapping(value = "/{matchId}/status", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter status(@PathVariable("matchId") UUID matchId, @RequestHeader("X-User-Id") UUID userId) {
+        return queueService.subscribe(matchId, userId);
+    }
+
+    /**
+     * 대기열 통과 검증
+     * GET /api/queues/{matchId}/validation
+     * Role : INTERNAL
+     */
+    @GetMapping("/{matchId}/validation")
+    public void validation(@PathVariable("matchId") UUID matchId, @RequestBody TokenValidateRequest request) {
+    }
 }
