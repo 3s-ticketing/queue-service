@@ -15,27 +15,37 @@ import org.ticketing.queue.domain.exception.AlreadyInitQueueException;
 import org.ticketing.queue.domain.exception.AlreadyWatingQueueException;
 import org.ticketing.queue.domain.exception.TokenException;
 import org.ticketing.queue.domain.model.Queue;
+import org.ticketing.queue.domain.model.QueueExitReason;
 import org.ticketing.queue.domain.repository.QueueRedisRepository;
 import org.ticketing.queue.domain.repository.QueueRepository;
 import org.ticketing.queue.infrastructure.persistence.SseEmitterRepository;
+import org.ticketing.queue.domain.exception.AlreadyBannedUserException;
+import org.ticketing.queue.domain.model.BannedUser;
+import org.ticketing.queue.domain.repository.BannedUserRepository;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class QueueServiceTest {
+
+    @Mock
+    private QueueHistoryService queueHistoryService;
 
     @Mock
     private QueueRepository queueRepository;
 
     @Mock
     private QueueRedisRepository queueRedisRepository;
+
+    @Mock
+    private BannedUserRepository bannedUserRepository;
 
     @Mock
     private SseEmitterRepository sseEmitterRepository;
@@ -229,6 +239,165 @@ class QueueServiceTest {
             assertThat(emitter).isNotNull();
 
             verify(sseEmitterRepository).save(eq(matchId), eq(userId), any(SseEmitter.class));
+        }
+    }
+
+    @Nested
+    @DisplayName("대기열 초기화")
+    class RefreshQueueTest {
+
+        @Test
+        @DisplayName("연결된 모든 유저의 이력을 기록하고 SSE 종료 후 Redis 초기화한다")
+        void refreshQueue_success() throws Exception {
+            // given
+            UUID matchId = UUID.randomUUID();
+            UUID user1 = UUID.randomUUID();
+            UUID user2 = UUID.randomUUID();
+
+            List<UUID> connectedUsers = List.of(user1, user2);
+
+            SseEmitter emitter1 = mock(SseEmitter.class);
+            SseEmitter emitter2 = mock(SseEmitter.class);
+
+            when(sseEmitterRepository.findUserIdsByMatchId(matchId))
+                    .thenReturn(connectedUsers);
+
+            when(sseEmitterRepository.find(matchId, user1))
+                    .thenReturn(emitter1);
+
+            when(sseEmitterRepository.find(matchId, user2))
+                    .thenReturn(emitter2);
+
+            when(queueRedisRepository.getEnteredAt(matchId, user1))
+                    .thenReturn(LocalDateTime.now().minusMinutes(5));
+
+            when(queueRedisRepository.getEnteredAt(matchId, user2))
+                    .thenReturn(LocalDateTime.now().minusMinutes(3));
+
+            when(objectMapper.writeValueAsString(any()))
+                    .thenReturn("{\"status\":\"REFRESHED\"}");
+
+            // when
+            queueService.refreshQueue(matchId);
+
+            // then
+            verify(queueHistoryService).record(
+                    eq(matchId), eq(user1), any(LocalDateTime.class), eq(QueueExitReason.REFRESH)
+            );
+            verify(queueHistoryService).record(
+                    eq(matchId), eq(user2), any(LocalDateTime.class), eq(QueueExitReason.REFRESH)
+            );
+
+            verify(emitter1).send(any(SseEmitter.SseEventBuilder.class));
+            verify(emitter2).send(any(SseEmitter.SseEventBuilder.class));
+
+            verify(emitter1).complete();
+            verify(emitter2).complete();
+
+            verify(sseEmitterRepository).remove(matchId, user1);
+            verify(sseEmitterRepository).remove(matchId, user2);
+
+            verify(queueRedisRepository).refreshQueue(matchId);
+        }
+    }
+
+    @Nested
+    @DisplayName("유저 차단")
+    class BanUserTest {
+
+        @Test
+        @DisplayName("대기열 유저 차단 성공")
+        void banUser_success_waitingUser() throws Exception {
+            // given
+            UUID matchId = UUID.randomUUID();
+            UUID userId = UUID.randomUUID();
+
+            SseEmitter emitter = mock(SseEmitter.class);
+
+            when(bannedUserRepository.existsByQueueIdAndUserId(matchId, userId))
+                    .thenReturn(false);
+
+            when(queueRedisRepository.getRank(matchId, userId))
+                    .thenReturn(1L);
+
+            when(queueRedisRepository.getEnteredAt(matchId, userId))
+                    .thenReturn(LocalDateTime.now().minusMinutes(10));
+
+            when(queueRedisRepository.getPassToken(matchId, userId))
+                    .thenReturn(null);
+
+            when(sseEmitterRepository.find(matchId, userId))
+                    .thenReturn(emitter);
+
+            when(objectMapper.writeValueAsString(any()))
+                    .thenReturn("{\"status\":\"BANNED\"}");
+
+            // when
+            queueService.banUser(matchId, userId);
+
+            // then
+            verify(queueHistoryService).record(
+                    eq(matchId),
+                    eq(userId),
+                    any(LocalDateTime.class),
+                    eq(QueueExitReason.BANNED)
+            );
+
+            verify(queueRedisRepository).exit(matchId, userId);
+
+            verify(emitter).send(any(SseEmitter.SseEventBuilder.class));
+            verify(emitter).complete();
+
+            verify(sseEmitterRepository).remove(matchId, userId);
+
+            verify(bannedUserRepository).save(any(BannedUser.class));
+        }
+
+        @Test
+        @DisplayName("통과 토큰 보유 유저 차단 시 토큰 삭제 및 슬롯 반환")
+        void banUser_success_passTokenUser() {
+            // given
+            UUID matchId = UUID.randomUUID();
+            UUID userId = UUID.randomUUID();
+
+            when(bannedUserRepository.existsByQueueIdAndUserId(matchId, userId))
+                    .thenReturn(false);
+
+            when(queueRedisRepository.getRank(matchId, userId))
+                    .thenReturn(null);
+
+            when(queueRedisRepository.getPassToken(matchId, userId))
+                    .thenReturn("PASS_TOKEN");
+
+            when(sseEmitterRepository.find(matchId, userId))
+                    .thenReturn(null);
+
+            // when
+            queueService.banUser(matchId, userId);
+
+            // then
+            verify(queueRedisRepository).deletePassToken(matchId, userId);
+            verify(queueRedisRepository).releaseSlot(matchId);
+
+            verify(bannedUserRepository).save(any(BannedUser.class));
+        }
+
+        @Test
+        @DisplayName("이미 차단된 유저면 예외 발생")
+        void banUser_alreadyBanned() {
+            // given
+            UUID matchId = UUID.randomUUID();
+            UUID userId = UUID.randomUUID();
+
+            when(bannedUserRepository.existsByQueueIdAndUserId(matchId, userId))
+                    .thenReturn(true);
+
+            // when & then
+            assertThatThrownBy(() -> queueService.banUser(matchId, userId))
+                    .isInstanceOf(AlreadyBannedUserException.class);
+
+            verify(bannedUserRepository, never()).save(any());
+            verify(queueRedisRepository, never()).exit(any(), any());
         }
     }
 }

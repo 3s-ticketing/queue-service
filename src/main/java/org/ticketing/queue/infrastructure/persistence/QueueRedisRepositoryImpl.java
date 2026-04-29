@@ -18,9 +18,10 @@ import org.ticketing.queue.domain.repository.QueueRepository;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 import static org.ticketing.queue.infrastructure.util.RuaScript.ACQUIRE_SLOT_AND_TOKEN_SCRIPT;
 import static org.ticketing.queue.infrastructure.util.RuaScript.RELEASE_SLOT_SCRIPT;
@@ -226,21 +227,6 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
         String key = PASS_TOKEN_PREFIX + matchId + ":" + userId;
         Long ttlSeconds = redisTemplate.getExpire(key, TimeUnit.SECONDS);
         return LocalDateTime.now().plusSeconds(ttlSeconds);
-    }
-
-    // 대기열 sortedSet에서 전체 유저 ID 조회
-    @Override
-    public Set<UUID> getAllUserIdsInWaitingQueue(UUID matchId) {
-        String key = getKey(matchId);   // queue:{matchId}
-        Set<String> members = redisTemplate.opsForZSet().range(key, 0, -1);
-
-        if (members == null || members.isEmpty()) {
-            return Collections.emptySet();
-        }
-
-        return members.stream()
-                .map(UUID::fromString)
-                .collect(Collectors.toSet());
     }
 
     /**

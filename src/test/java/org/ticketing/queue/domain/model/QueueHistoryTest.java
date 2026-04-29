@@ -99,5 +99,46 @@ class QueueHistoryTest {
             assertThat(history.getExitedAt()).isNotNull();
             assertThat(history.getExitReason()).isEqualTo(QueueExitReason.TIMEOUT);
         }
+
+
+        @Test
+        @DisplayName("ofRefreshed - 초기화 이력을 생성한다")
+        void ofRefreshed_success() {
+            // given
+            UUID matchId = UUID.randomUUID();
+            UUID userId = UUID.randomUUID();
+            LocalDateTime enteredAt = LocalDateTime.now().minusMinutes(15);
+
+            // when
+            QueueHistory history = QueueHistory.ofRefresh(matchId, userId, enteredAt);
+
+            // then
+            assertThat(history.getId()).isNotNull();
+            assertThat(history.getMatchId()).isEqualTo(matchId);
+            assertThat(history.getUserId()).isEqualTo(userId);
+            assertThat(history.getEnteredAt()).isEqualTo(enteredAt);
+            assertThat(history.getExitedAt()).isNotNull();
+            assertThat(history.getExitReason()).isEqualTo(QueueExitReason.REFRESH);
+        }
+
+        @Test
+        @DisplayName("ofBanned - 차단 이력을 생성한다")
+        void ofBanned_success() {
+            // given
+            UUID matchId = UUID.randomUUID();
+            UUID userId = UUID.randomUUID();
+            LocalDateTime enteredAt = LocalDateTime.now().minusMinutes(15);
+
+            // when
+            QueueHistory history = QueueHistory.ofBanned(matchId, userId, enteredAt);
+
+            // then
+            assertThat(history.getId()).isNotNull();
+            assertThat(history.getMatchId()).isEqualTo(matchId);
+            assertThat(history.getUserId()).isEqualTo(userId);
+            assertThat(history.getEnteredAt()).isEqualTo(enteredAt);
+            assertThat(history.getExitedAt()).isNotNull();
+            assertThat(history.getExitReason()).isEqualTo(QueueExitReason.BANNED);
+        }
     }
 }
