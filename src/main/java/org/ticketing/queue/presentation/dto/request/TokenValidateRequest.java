@@ -6,8 +6,6 @@ import org.ticketing.queue.application.dto.command.TokenValidateCommand;
 import java.util.UUID;
 
 public record TokenValidateRequest(
-        @NotNull(message = "경기 아이디를 입력해주세요.")
-        UUID matchId,
         @NotNull(message = "유저 아이디를 입력해주세요.")
         UUID userId,
         @NotNull(message = "토큰을 입력해주세요.")
