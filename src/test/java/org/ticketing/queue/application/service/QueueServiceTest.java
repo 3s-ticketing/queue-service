@@ -6,9 +6,9 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
-import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.annotation.Import;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.ticketing.queue.application.dto.command.QueueCreateCommand;
 import org.ticketing.queue.application.dto.command.TokenValidateCommand;
@@ -40,25 +40,25 @@ import static org.mockito.Mockito.*;
 @Import(TestRedisConfig.class)
 class QueueServiceTest {
 
-    @Mock
+    @MockitoBean
     private QueueHistoryService queueHistoryService;
 
-    @Mock
+    @MockitoBean
     private QueueRepository queueRepository;
 
-    @Mock
+    @MockitoBean
     private QueueRedisRepository queueRedisRepository;
 
-    @Mock
+    @MockitoBean
     private BannedUserRepository bannedUserRepository;
 
-    @Mock
+    @MockitoBean
     private SseEmitterRepository sseEmitterRepository;
 
-    @Mock
+    @MockitoBean
     private QueueRedisSubscriber queueRedisSubscriber;
 
-    @Mock
+    @MockitoBean
     private ObjectMapper objectMapper;
 
     @InjectMocks
