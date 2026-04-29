@@ -25,6 +25,8 @@ public class QueueHistoryService {
             case IO_ERROR         -> QueueHistory.ofIoError(matchId, userId, enteredAt);
             case UNEXPECTED_ERROR -> QueueHistory.ofUnexpectedError(matchId, userId, enteredAt);
             case TIMEOUT          -> QueueHistory.ofTimeout(matchId, userId, enteredAt);
+            case REFRESH          -> QueueHistory.ofRefresh(matchId, userId, enteredAt);
+            case BANNED           -> QueueHistory.ofBanned(matchId, userId, enteredAt);
         };
 
         try {

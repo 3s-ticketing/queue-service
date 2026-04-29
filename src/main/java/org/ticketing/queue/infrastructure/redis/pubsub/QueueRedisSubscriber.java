@@ -7,9 +7,9 @@ import org.springframework.data.redis.connection.Message;
 import org.springframework.data.redis.connection.MessageListener;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.ticketing.queue.application.service.QueueHistoryService;
 import org.ticketing.queue.domain.model.AcquireResult;
 import org.ticketing.queue.domain.model.QueueExitReason;
-import org.ticketing.queue.domain.model.QueueHistory;
 import org.ticketing.queue.domain.model.QueueToken;
 import org.ticketing.queue.domain.repository.QueueHistoryRepository;
 import org.ticketing.queue.domain.repository.QueueRedisRepository;
@@ -27,6 +27,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class QueueRedisSubscriber implements MessageListener {
 
+    private final QueueHistoryService queueHistoryService;
     private final QueueRedisRepository queueRedisRepository;
     private final QueueTokenDomainService queueTokenDomainService;
     private final QueueHistoryRepository queueHistoryRepository;
@@ -65,8 +66,7 @@ public class QueueRedisSubscriber implements MessageListener {
         }
     }
 
-    public void pushStatus(UUID matchId, UUID userId, SseEmitter emitter,
-                           Long rank, Long totalCount) {
+    public void pushStatus(UUID matchId, UUID userId, SseEmitter emitter, Long rank, Long totalCount) {
         boolean slotAcquired = false;
         LocalDateTime enteredAt = null;
 
@@ -101,7 +101,7 @@ public class QueueRedisSubscriber implements MessageListener {
             queueRedisRepository.savePassToken(matchId, userId, token.getToken());
             queueRedisRepository.exit(matchId, userId);
 
-            recordHistory(matchId, userId, enteredAt, QueueExitReason.PASSED);
+            queueHistoryService.record(matchId, userId, enteredAt, QueueExitReason.PASSED);
 
             sendEvent(emitter, UserStatusResponse.ofPassed(rank, totalCount, token.getToken()));
             sseEmitterRepository.remove(matchId, userId);
@@ -145,24 +145,6 @@ public class QueueRedisSubscriber implements MessageListener {
         if (enteredAt == null) {
             enteredAt = queueRedisRepository.getEnteredAt(matchId, userId);
         }
-        recordHistory(matchId, userId, enteredAt, reason);
-    }
-
-    public void recordHistory(UUID matchId, UUID userId, LocalDateTime enteredAt, QueueExitReason exitReason) {
-        QueueHistory history = switch (exitReason) {
-            case PASSED -> QueueHistory.ofPassed(matchId, userId, enteredAt);
-            case IO_ERROR -> QueueHistory.ofIoError(matchId, userId, enteredAt);
-            case UNEXPECTED_ERROR -> QueueHistory.ofUnexpectedError(matchId, userId, enteredAt);
-            case TIMEOUT -> QueueHistory.ofTimeout(matchId, userId, enteredAt);
-        };
-
-        try {
-            queueHistoryRepository.save(history);
-            log.debug("[QueueHistory] 저장 완료. matchId={}, userId={}, reason={}",
-                    history.getMatchId(), history.getUserId(), history.getExitReason());
-        } catch (Exception e) {
-            log.warn("[QueueHistory] 저장 실패. matchId={}, userId={}, reason={}",
-                    history.getMatchId(), history.getUserId(), history.getExitReason(), e);
-        }
+        queueHistoryService.record(matchId, userId, enteredAt, QueueExitReason.PASSED);
     }
 }

@@ -84,4 +84,28 @@ public class QueueHistory {
         );
     }
 
+    /** 대기열 초기화로 인한 이탈 */
+    public static QueueHistory ofRefresh(UUID matchId, UUID userId, LocalDateTime enteredAt) {
+        return new QueueHistory(
+                UUID.randomUUID(),
+                userId,
+                matchId,
+                enteredAt,
+                LocalDateTime.now(),
+                QueueExitReason.REFRESH
+        );
+    }
+
+    /** 차단된 유저로 인한 이탈 */
+    public static QueueHistory ofBanned(UUID matchId, UUID userId, LocalDateTime enteredAt) {
+        return new QueueHistory(
+                UUID.randomUUID(),
+                userId,
+                matchId,
+                enteredAt,
+                LocalDateTime.now(),
+                QueueExitReason.BANNED
+        );
+    }
+
 }

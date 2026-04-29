@@ -19,6 +19,7 @@ public interface QueueRedisRepository {
 
     void exit(UUID matchId, UUID userId);
 
+    void refreshQueue(UUID matchId);
     // ── 슬롯 관리 ────────────────────────────────────────────────────────
 
     void initSlots(UUID matchId);
@@ -40,4 +41,5 @@ public interface QueueRedisRepository {
     String findPassToken(UUID matchId, UUID userId);
 
     LocalDateTime getExpiredAt(UUID matchId, UUID userId);
+
 }
