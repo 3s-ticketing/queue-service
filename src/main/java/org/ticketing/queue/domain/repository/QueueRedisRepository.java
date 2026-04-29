@@ -20,6 +20,9 @@ public interface QueueRedisRepository {
     void exit(UUID matchId, UUID userId);
 
     void refreshQueue(UUID matchId);
+
+    void saveBannedUser(UUID matchId, UUID userId);
+
     // ── 슬롯 관리 ────────────────────────────────────────────────────────
 
     void initSlots(UUID matchId);

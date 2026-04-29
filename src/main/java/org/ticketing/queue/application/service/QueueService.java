@@ -299,6 +299,9 @@ public class QueueService {
         BannedUser bannedUser = BannedUser.create(matchId, userId);
         bannedUserRepository.save(bannedUser);
 
+        // Redis에 차단 정보 저장 → entry() 시 차단 체크용
+        queueRedisRepository.saveBannedUser(matchId, userId);
+
         log.info("[Queue] 유저 차단 완료. matchId = {}, userId = {}", matchId, userId);
     }
 

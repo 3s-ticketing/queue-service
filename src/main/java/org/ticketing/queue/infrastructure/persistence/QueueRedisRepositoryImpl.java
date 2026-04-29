@@ -7,6 +7,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Repository;
+import org.ticketing.queue.domain.exception.BannedUserException;
 import org.ticketing.queue.domain.exception.NotFoundUserException;
 import org.ticketing.queue.domain.exception.SlotException;
 import org.ticketing.queue.domain.exception.TokenException;
@@ -39,6 +40,8 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
     private static final String SLOTS_AVAILABLE_KEY  = "queue:slots:available:%s";  // 남은 슬롯
     private static final String PASS_TOKEN_PREFIX = "queue:pass-token:";
     private static final String ENTERED_AT_KEY = "queue:entered-at:%s:%s"; // queue:entered-at:{matchId}:{userId}
+    private static final String BANNED_USER_KEY = "queue:banned:%s:%s"; // queue:banned:{matchId}:{userId}
+
     private static final String PLACEHOLDER = "PENDING";   // 토큰 발급 전 선점 표시
     private static final long TOKEN_TTL_MINUTES = 10L;
 
@@ -47,6 +50,11 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
     public boolean entry(UUID matchId, UUID userId) {
         String queueKey = getKey(matchId);
         String sequenceKey = getSeqKey(matchId);
+
+        // 차단된 유저 진입 차단
+        if (isBanned(matchId, userId)) {
+            throw new BannedUserException(matchId, userId);
+        }
 
         Long result = redisTemplate.execute(
                 ENTRY_SCRIPT,
@@ -312,6 +320,11 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
         }
     }
 
+    @Override
+    public void saveBannedUser(UUID matchId, UUID userId) {
+        redisTemplate.opsForValue().set(getBannedKey(matchId, userId), "1");
+    }
+
     private String getKey(UUID matchId) {
         return String.format(QUEUE_KEY, matchId);
     }
@@ -322,5 +335,13 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
 
     private String getEnteredAtKey(UUID matchId, UUID userId) {
         return String.format(ENTERED_AT_KEY, matchId, userId);
+    }
+
+    private String getBannedKey(UUID matchId, UUID userId) {
+        return String.format(BANNED_USER_KEY, matchId, userId);
+    }
+
+    private boolean isBanned(UUID matchId, UUID userId) {
+        return Boolean.TRUE.equals(redisTemplate.hasKey(getBannedKey(matchId, userId)));
     }
 }
