@@ -5,12 +5,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import org.ticketing.common.event.Events;
 import org.ticketing.queue.application.dto.command.QueueCreateCommand;
 import org.ticketing.queue.application.dto.command.QueueUpdateCommand;
 import org.ticketing.queue.application.dto.command.TokenValidateCommand;
@@ -18,14 +16,18 @@ import org.ticketing.queue.application.dto.query.QueueListQuery;
 import org.ticketing.queue.application.dto.result.QueueListResult;
 import org.ticketing.queue.application.dto.result.QueueResult;
 import org.ticketing.queue.domain.dto.QueueProjection;
-import org.ticketing.queue.domain.event.MatchApprovedEvent;
-import org.ticketing.queue.domain.exception.QueueException;
+import org.ticketing.queue.domain.exception.AlreadyInitQueueException;
+import org.ticketing.queue.domain.exception.AlreadyWatingQueueException;
+import org.ticketing.queue.domain.exception.TokenException;
 import org.ticketing.queue.domain.model.Queue;
 import org.ticketing.queue.domain.model.QueueExitReason;
 import org.ticketing.queue.domain.repository.QueueRedisRepository;
 import org.ticketing.queue.domain.repository.QueueRepository;
-import org.ticketing.queue.infrastructure.redis.pubsub.QueueRedisSubscriber;
 import org.ticketing.queue.infrastructure.persistence.SseEmitterRepository;
+import org.ticketing.queue.infrastructure.redis.pubsub.QueueRedisSubscriber;
+import org.ticketing.queue.domain.exception.AlreadyBannedUserException;
+import org.ticketing.queue.domain.model.BannedUser;
+import org.ticketing.queue.domain.repository.BannedUserRepository;
 import org.ticketing.queue.presentation.dto.response.UserStatusResponse;
 
 import java.io.IOException;
@@ -40,11 +42,13 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class QueueService {
 
-    private final QueueRepository queueRepository;
     private final QueueHistoryService queueHistoryService;
+    private final QueueRepository queueRepository;
     private final QueueRedisRepository queueRedisRepository;
-    private final QueueRedisSubscriber queueRedisSubscriber;
     private final SseEmitterRepository sseEmitterRepository; // ← ConcurrentHashMap 대체
+    private final QueueRedisSubscriber queueRedisSubscriber;
+    private final BannedUserRepository bannedUserRepository;
+
     private final ObjectMapper objectMapper;
 
     // SSE 타임아웃: 15분 (대기열 최대 대기 시간 기준)
@@ -65,16 +69,15 @@ public class QueueService {
 
     public UUID createQueue(QueueCreateCommand command) {
         if (queueRepository.existsByMatchId(command.matchId())) {
-            throw new QueueException("이미 해당 경기의 큐 설정이 존재합니다.", HttpStatus.BAD_REQUEST);
+            throw new AlreadyInitQueueException(command.matchId());
         }
-        UUID uuid = UUID.randomUUID();
+
         Queue queue = Queue.create(
                 UUID.randomUUID(),
                 command.matchId(),
                 command.maxActiveUsers(),
                 command.openAt()
         );
-        Events.trigger(uuid.toString(), "Queue", command.matchId().toString(), "match.approved", new MatchApprovedEvent(command.matchId()));
         return queueRepository.save(queue).getId();
     }
 
@@ -93,11 +96,12 @@ public class QueueService {
         queue.softDelete(userId);
     }
 
+    // 유저 대기열 진입(중복 진입 불가)
     public void entry(UUID matchId, UUID userId) {
         boolean added = queueRedisRepository.entry(matchId, userId);
 
         if (!added) {
-            throw new QueueException("이미 대기열에서 대기중입니다.", HttpStatus.BAD_REQUEST);
+            throw new AlreadyWatingQueueException(matchId, userId);
         }
     }
 
@@ -175,6 +179,7 @@ public class QueueService {
         }
     }
 
+    // SSE 전송
     private void sendEvent(SseEmitter emitter, UserStatusResponse response) throws IOException {
         try {
             emitter.send(
@@ -190,17 +195,165 @@ public class QueueService {
         }
     }
 
+    // 토큰 검증
     public void validate(TokenValidateCommand command) {
         String token = queueRedisRepository.findPassToken(command.matchId(), command.userId());
         LocalDateTime expiredAt = queueRedisRepository.getExpiredAt(command.matchId(), command.userId());
 
         // 저장된 accessToken 불일치
         if (!token.equals(command.accessToken())) {
-            throw new QueueException("토큰이 불일치합니다.", HttpStatus.BAD_REQUEST);
+            throw new TokenException("토큰이 불일치합니다.");
         }
         // 만료 시간 체크
         if (expiredAt.isBefore(LocalDateTime.now())) {
-            throw new QueueException("만료된 토큰입니다.", HttpStatus.REQUEST_TIMEOUT);
+            throw new TokenException("만료된 토큰입니다.");
+        }
+    }
+
+    /**
+     * 대기열 초기화
+     * 1. Queue 엔티티 조회 및 검증
+     * 2. SSE 연결 유저 전체에 초기화 이벤트 전송 후 연결 종료
+     * 3. Redis 데이터 전체 삭제 (sortedSet / 슬롯 / 토큰)
+     * 4. 이력 기록 (REFRESH 사유)
+     */
+    public void refreshQueue(UUID matchId) {
+        // SSE 연결 유저 조회 → 이력 기록 (Redis 삭제 전에 먼저 수행)
+        recordHistoryForConnectedUsers(matchId);
+
+        // SSE 초기화 이벤트 전송 및 연결 종료
+        notifyRefreshAndCloseEmitters(matchId);
+
+        // Redis 전체 초기화
+        queueRedisRepository.refreshQueue(matchId);
+
+        log.info("[Queue] 대기열 초기화 완료. matchId={}", matchId);
+    }
+
+    /**
+     * SSE 연결 유저 → 이력 기록
+     * Redis 삭제 전에 enteredAt 조회해야 하므로 먼저 처리
+     */
+    private void recordHistoryForConnectedUsers(UUID matchId) {
+        List<UUID> connectedUserIds = sseEmitterRepository.findUserIdsByMatchId(matchId);
+
+        for (UUID userId : connectedUserIds) {
+            try {
+                LocalDateTime enteredAt = queueRedisRepository.getEnteredAt(matchId, userId);
+                queueHistoryService.record(matchId, userId, enteredAt, QueueExitReason.REFRESH);
+            } catch (Exception e) {
+                // 이력 기록 실패가 초기화를 막으면 안 됨
+                log.warn("[Queue] 이력 기록 실패. matchId={}, userId={}", matchId, userId, e);
+            }
+        }
+    }
+
+    // SSE 연결 유저 전체에 초기화 이벤트 전송 후 연결 종료
+    private void notifyRefreshAndCloseEmitters(UUID matchId) {
+        List<UUID> connectedUserIds = sseEmitterRepository.findUserIdsByMatchId(matchId);
+
+        for (UUID userId : connectedUserIds) {
+            SseEmitter emitter = sseEmitterRepository.find(matchId, userId);
+            if (emitter == null) continue;
+
+            try {
+                emitter.send(
+                        SseEmitter.event()
+                                .name("queue-refresh")
+                                .data(objectMapper.writeValueAsString(
+                                        UserStatusResponse.ofRefreshed()
+                                ))
+                                .id(String.valueOf(System.currentTimeMillis()))
+                );
+            } catch (IOException e) {
+                log.warn("[SSE] 초기화 이벤트 전송 실패. matchId={}, userId={}", matchId, userId);
+            } finally {
+                emitter.complete();
+                sseEmitterRepository.remove(matchId, userId);
+            }
+        }
+    }
+
+    /**
+     * 특정 유저 차단
+     * 1. Queue 엔티티 조회
+     * 2. 중복 차단 검증
+     * 3. 대기열에 있는 경우 → 이력 기록 후 Redis에서 제거
+     * 4. SSE 연결 있는 경우 → 차단 이벤트 전송 후 연결 종료
+     * 5. 통과 토큰 보유 중인 경우 → 토큰 삭제 및 슬롯 반환
+     * 6. BannedUser 저장
+     */
+    public void banUser(UUID matchId, UUID userId) {
+        // 중복 차단 검증
+        if (bannedUserRepository.existsByQueueIdAndUserId(matchId, userId)) {
+            throw new AlreadyBannedUserException(matchId, userId);
+        }
+
+        // 대기열에 존재하면 이력 기록 후 제거
+        removeFromQueueIfPresent(matchId, userId);
+
+        // SSE 연결 종료
+        notifyBannedAndCloseEmitter(matchId, userId);
+
+        // BannedUser 저장
+        BannedUser bannedUser = BannedUser.create(matchId, userId);
+        bannedUserRepository.save(bannedUser);
+
+        // Redis에 차단 정보 저장 → entry() 시 차단 체크용
+        queueRedisRepository.saveBannedUser(matchId, userId);
+
+        log.info("[Queue] 유저 차단 완료. matchId = {}, userId = {}", matchId, userId);
+    }
+
+    /**
+     * 대기열 존재 여부 확인 후 이력 기록 및 제거
+     * 통과 토큰 보유 시 토큰 삭제 + 슬롯 반환
+     */
+    private void removeFromQueueIfPresent(UUID matchId, UUID userId) {
+        Long rank = queueRedisRepository.getRank(matchId, userId);
+
+        if (rank != null) {
+            // 대기 중인 유저 → 이력 기록
+            try {
+                LocalDateTime enteredAt = queueRedisRepository.getEnteredAt(matchId, userId);
+                queueHistoryService.record(matchId, userId, enteredAt, QueueExitReason.BANNED);
+            } catch (Exception e) {
+                log.warn("[Queue] 차단 이력 기록 실패. matchId={}, userId={}", matchId, userId, e);
+            }
+            // sortedSet에서 제거
+            queueRedisRepository.exit(matchId, userId);
+        }
+
+        // 통과 토큰 보유 여부 확인 → 토큰 삭제 + 슬롯 반환
+        String passToken = queueRedisRepository.getPassToken(matchId, userId);
+        if (passToken != null) {
+            queueRedisRepository.deletePassToken(matchId, userId);
+            queueRedisRepository.releaseSlot(matchId);
+            log.info("[Queue] 차단 유저 토큰 삭제 및 슬롯 반환. matchId={}, userId={}", matchId, userId);
+        }
+    }
+
+    /**
+     * SSE 연결된 유저에게 차단 이벤트 전송 후 연결 종료
+     */
+    private void notifyBannedAndCloseEmitter(UUID matchId, UUID userId) {
+        SseEmitter emitter = sseEmitterRepository.find(matchId, userId);
+        if (emitter == null) return;
+
+        try {
+            emitter.send(
+                    SseEmitter.event()
+                            .name("queue-banned")
+                            .data(objectMapper.writeValueAsString(
+                                    UserStatusResponse.ofBanned()
+                            ))
+                            .id(String.valueOf(System.currentTimeMillis()))
+            );
+        } catch (IOException e) {
+            log.warn("[SSE] 차단 이벤트 전송 실패. matchId={}, userId={}", matchId, userId);
+        } finally {
+            emitter.complete();
+            sseEmitterRepository.remove(matchId, userId);
         }
     }
 }

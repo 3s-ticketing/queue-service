@@ -9,11 +9,10 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Repository;
 import org.ticketing.queue.domain.dto.QueueProjection;
 import org.ticketing.queue.domain.dto.QueueSearchCondition;
-import org.ticketing.queue.domain.exception.QueueException;
+import org.ticketing.queue.domain.exception.QueueNotFoundException;
 import org.ticketing.queue.domain.model.Queue;
 import org.ticketing.queue.domain.repository.QueueRepository;
 
@@ -34,19 +33,19 @@ public class QueueRepositoryImpl implements QueueRepository {
     @Override
     public Queue findById(UUID queueId) {
         return jpaQueueRepository.findById(queueId)
-                .orElseThrow(() -> new QueueException("해당 큐가 존재하지 않습니다.", HttpStatus.NOT_FOUND));
+                .orElseThrow(() -> new QueueNotFoundException(queueId));
     }
 
     @Override
     public Queue findByMatchId(UUID matchId) {
         return jpaQueueRepository.findByMatchId(matchId)
-                .orElseThrow(() -> new QueueException("해당 큐가 존재하지 않습니다.", HttpStatus.NOT_FOUND));
+                .orElseThrow(() -> new QueueNotFoundException(String.valueOf(matchId)));
     }
 
     @Override
     public Queue findByIdAndDeletedAtIsNull(UUID queueId) {
         return jpaQueueRepository.findByIdAndDeletedAtIsNull(queueId)
-                .orElseThrow(() -> new QueueException("해당 큐가 존재하지 않습니다.", HttpStatus.NOT_FOUND));
+                .orElseThrow(() -> new QueueNotFoundException(queueId));
     }
 
     @Override

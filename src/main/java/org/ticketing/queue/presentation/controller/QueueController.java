@@ -98,11 +98,31 @@ public class QueueController {
 
     /**
      * 대기열 토큰 검증
-     * GET /api/queues/{matchId}/validation
+     * Post /api/queues/{matchId}/validation
      * Role : INTERNAL
      */
-    @GetMapping("/{matchId}/validation")
+    @PostMapping("/{matchId}/validation")
     public void validation(@PathVariable("matchId") UUID matchId, @RequestBody TokenValidateRequest request) {
         queueService.validate(TokenValidateRequest.toCommand(request, matchId));
+    }
+
+    /**
+     * 대기열 초기화
+     * Post /api/queues/{matchId}/refresh
+     * Role : ADMIN
+     */
+    @PostMapping("/{matchId}/refresh")
+    public void refreshQueue(@PathVariable("matchId") UUID matchId) {
+        queueService.refreshQueue(matchId);
+    }
+
+    /**
+     * 대기열 유저 차단
+     * Post /api/queues/{matchId}/{userId}/banned
+     * Role : ADMIN
+     */
+    @PostMapping("/{matchId}/{userId}/banned")
+    public void banUser(@PathVariable("matchId") UUID matchId, @PathVariable UUID userId) {
+        queueService.banUser(matchId, userId);
     }
 }

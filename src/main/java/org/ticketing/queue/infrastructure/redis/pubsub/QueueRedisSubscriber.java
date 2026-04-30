@@ -7,10 +7,10 @@ import org.springframework.data.redis.connection.Message;
 import org.springframework.data.redis.connection.MessageListener;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.ticketing.queue.application.service.QueueHistoryService;
+import org.ticketing.queue.domain.model.AcquireResult;
 import org.ticketing.queue.domain.model.QueueExitReason;
-import org.ticketing.queue.domain.model.QueueHistory;
 import org.ticketing.queue.domain.model.QueueToken;
-import org.ticketing.queue.domain.repository.QueueHistoryRepository;
 import org.ticketing.queue.domain.repository.QueueRedisRepository;
 import org.ticketing.queue.domain.service.QueueTokenDomainService;
 import org.ticketing.queue.infrastructure.persistence.SseEmitterRepository;
@@ -26,9 +26,9 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class QueueRedisSubscriber implements MessageListener {
 
+    private final QueueHistoryService queueHistoryService;
     private final QueueRedisRepository queueRedisRepository;
     private final QueueTokenDomainService queueTokenDomainService;
-    private final QueueHistoryRepository queueHistoryRepository;
     private final SseEmitterRepository sseEmitterRepository;
     private final ObjectMapper objectMapper;
 
@@ -66,54 +66,54 @@ public class QueueRedisSubscriber implements MessageListener {
 
     public void pushStatus(UUID matchId, UUID userId, SseEmitter emitter, Long rank, Long totalCount) {
         boolean slotAcquired = false;
-        boolean tokenAcquired = false;
         LocalDateTime enteredAt = null;
 
         try {
-            slotAcquired = queueRedisRepository.acquireSlot(matchId);
-            if (!slotAcquired) {
-                // 슬롯 경합 패배 → 스케줄러가 다음 주기에 순위 업데이트
-                return;
+            AcquireResult acquireResult = queueRedisRepository.acquireSlotAndToken(matchId, userId);
+
+            switch (acquireResult) {
+                case NO_SLOT -> {
+                    // 슬롯 경합 패배 → 다음 스케줄러 주기에 재시도
+                    return;
+                }
+                case PENDING -> {
+                    // 다른 스레드가 발급 중 → 슬롯 획득 자체를 안 했으므로 반환 불필요
+                    return;
+                }
+                case ALREADY_ISSUED -> {
+                    // 이미 발급 완료 → 슬롯 획득 안 했으므로 반환 불필요
+                    String existingToken = queueRedisRepository.getPassToken(matchId, userId);
+                    sendEvent(emitter, UserStatusResponse.ofPassed(rank, totalCount, existingToken));
+                    sseEmitterRepository.remove(matchId, userId);
+                    emitter.complete();
+                    return;
+                }
+                case SUCCESS -> {
+                    slotAcquired = true;  // rollback 필요
+                }
             }
 
-            tokenAcquired = queueRedisRepository.acquirePassToken(matchId, userId);
-
-            // 유저별 중복 발급 방지
-            if (!tokenAcquired) {
-                String existingToken = queueRedisRepository.getPassToken(matchId, userId);
-                // 토큰 없으면 통과
-                if (existingToken == null) return;
-
-                // 토큰 존재하면 토큰 반환
-                sendEvent(emitter, UserStatusResponse.ofPassed(rank, totalCount, existingToken));
-                sseEmitterRepository.remove(matchId, userId);
-                emitter.complete();
-                return;
-            }
-
-            // 토큰 발급 후 저장
+            // 토큰 발급 및 저장
             QueueToken token = queueTokenDomainService.issue(matchId, userId);
             enteredAt = queueRedisRepository.getEnteredAt(matchId, userId);
             queueRedisRepository.savePassToken(matchId, userId, token.getToken());
             queueRedisRepository.exit(matchId, userId);
 
-            // 대기열 이탈 로그 기록
-            recordHistory(matchId, userId, enteredAt, QueueExitReason.PASSED);
+            queueHistoryService.record(matchId, userId, enteredAt, QueueExitReason.PASSED);
 
-            // SSE 전송
             sendEvent(emitter, UserStatusResponse.ofPassed(rank, totalCount, token.getToken()));
             sseEmitterRepository.remove(matchId, userId);
             emitter.complete();
 
         } catch (IOException e) {
             log.warn("[SSE] 전송 실패. matchId={}, userId={}", matchId, userId);
-            rollback(matchId, userId, slotAcquired, tokenAcquired, enteredAt, QueueExitReason.IO_ERROR);    // 토큰, 슬롯 획득했을 시 제거 및 반환
+            rollback(matchId, userId, slotAcquired, true, enteredAt, QueueExitReason.IO_ERROR);
             sseEmitterRepository.remove(matchId, userId);
             emitter.completeWithError(e);
 
         } catch (Exception e) {
             log.error("[SSE] 예상치 못한 오류. matchId={}, userId={}", matchId, userId, e);
-            rollback(matchId, userId, slotAcquired, tokenAcquired, enteredAt, QueueExitReason.UNEXPECTED_ERROR);
+            rollback(matchId, userId, slotAcquired, true, enteredAt, QueueExitReason.UNEXPECTED_ERROR);
             sseEmitterRepository.remove(matchId, userId);
             emitter.completeWithError(e);
         }
@@ -143,24 +143,6 @@ public class QueueRedisSubscriber implements MessageListener {
         if (enteredAt == null) {
             enteredAt = queueRedisRepository.getEnteredAt(matchId, userId);
         }
-        recordHistory(matchId, userId, enteredAt, reason);
-    }
-
-    public void recordHistory(UUID matchId, UUID userId, LocalDateTime enteredAt, QueueExitReason exitReason) {
-        QueueHistory history = switch (exitReason) {
-            case PASSED -> QueueHistory.ofPassed(matchId, userId, enteredAt);
-            case IO_ERROR -> QueueHistory.ofIoError(matchId, userId, enteredAt);
-            case UNEXPECTED_ERROR -> QueueHistory.ofUnexpectedError(matchId, userId, enteredAt);
-            case TIMEOUT -> QueueHistory.ofTimeout(matchId, userId, enteredAt);
-        };
-
-        try {
-            queueHistoryRepository.save(history);
-            log.debug("[QueueHistory] 저장 완료. matchId={}, userId={}, reason={}",
-                    history.getMatchId(), history.getUserId(), history.getExitReason());
-        } catch (Exception e) {
-            log.warn("[QueueHistory] 저장 실패. matchId={}, userId={}, reason={}",
-                    history.getMatchId(), history.getUserId(), history.getExitReason(), e);
-        }
+        queueHistoryService.record(matchId, userId, enteredAt, reason);
     }
 }

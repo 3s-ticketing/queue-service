@@ -36,18 +36,6 @@ public class QueueHistory {
     @Column(name = "status", nullable = false, length = 30)
     private QueueExitReason exitReason;
 
-    // Factory Methods
-    public static QueueHistory create(UUID userId, UUID matchId, LocalDateTime enteredAt, QueueExitReason status) {
-        return new QueueHistory(
-                UUID.randomUUID(),
-                userId,
-                matchId,
-                enteredAt,
-                LocalDateTime.now(),
-                status
-        );
-    }
-
     /** 토큰 발급 성공 - 정상 통과 */
     public static QueueHistory ofPassed(UUID matchId, UUID userId, LocalDateTime enteredAt) {
         return new QueueHistory(
@@ -93,6 +81,30 @@ public class QueueHistory {
                 enteredAt,
                 LocalDateTime.now(),
                 QueueExitReason.TIMEOUT
+        );
+    }
+
+    /** 대기열 초기화로 인한 이탈 */
+    public static QueueHistory ofRefresh(UUID matchId, UUID userId, LocalDateTime enteredAt) {
+        return new QueueHistory(
+                UUID.randomUUID(),
+                userId,
+                matchId,
+                enteredAt,
+                LocalDateTime.now(),
+                QueueExitReason.REFRESH
+        );
+    }
+
+    /** 차단된 유저로 인한 이탈 */
+    public static QueueHistory ofBanned(UUID matchId, UUID userId, LocalDateTime enteredAt) {
+        return new QueueHistory(
+                UUID.randomUUID(),
+                userId,
+                matchId,
+                enteredAt,
+                LocalDateTime.now(),
+                QueueExitReason.BANNED
         );
     }
 

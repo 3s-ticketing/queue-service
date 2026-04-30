@@ -24,6 +24,11 @@ public record UserStatusResponse(
         return new UserStatusResponse(rank, totalCount, true, accessToken, "PASSED");
     }
 
-    public static UserStatusResponse ofExpired() {
-        return new UserStatusResponse(null, null, false, null, "EXPIRED");
-    }}
+    public static UserStatusResponse ofRefreshed() {
+        return new UserStatusResponse(null, null, false, null, "REFRESHED");
+    }
+
+    public static UserStatusResponse ofBanned() {
+        return new UserStatusResponse(null, null, false, null, "BANNED");
+    }
+}

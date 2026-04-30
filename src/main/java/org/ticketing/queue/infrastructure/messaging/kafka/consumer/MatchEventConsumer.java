@@ -44,7 +44,8 @@ public class MatchEventConsumer {
             ack.acknowledge(); // 정상 처리 후 ACK
 
         } catch (Exception e) {
-            log.error("[queue-service] 슬롯 반환 실패: {}", event.matchId(), e);
+            String matchIdLog = (event != null && event.matchId() != null) ? event.matchId().toString() : "unknown";
+            log.error("[queue-service] 슬롯 반환 실패. matchId={}", matchIdLog, e);
             // ACK 안 하면 → DefaultErrorHandler → DLT로 이동
             throw e;
 
@@ -69,7 +70,8 @@ public class MatchEventConsumer {
             log.info("[queue-service] dlt 수신, 레디스 대기열 설정 추가 수동 처리 필요: {}", event.matchId());
 
         } catch (Exception e) {
-            log.error("[queue-service] dlt 수신, 에러 발생: {}", event.matchId(), e);
+            String matchIdLog = (event != null && event.matchId() != null) ? event.matchId().toString() : "unknown";
+            log.error("[queue-service] DLT 처리 실패. matchId={}", matchIdLog, e);
 
         } finally {
             MDC.clear();

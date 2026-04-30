@@ -23,8 +23,6 @@ public class RedisConfig {
         template.setHashKeySerializer(serializer);
         template.setHashValueSerializer(serializer);
 
-        template.afterPropertiesSet(); // ← 직렬화 설정 초기화 명시적으로 완료 처리
-
         return template;
     }
 
