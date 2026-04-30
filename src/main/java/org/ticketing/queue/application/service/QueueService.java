@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.ticketing.queue.application.dto.command.QueueCreateCommand;
@@ -16,23 +17,24 @@ import org.ticketing.queue.application.dto.query.QueueListQuery;
 import org.ticketing.queue.application.dto.result.QueueListResult;
 import org.ticketing.queue.application.dto.result.QueueResult;
 import org.ticketing.queue.domain.dto.QueueProjection;
+import org.ticketing.queue.domain.exception.AlreadyBannedUserException;
 import org.ticketing.queue.domain.exception.AlreadyInitQueueException;
-import org.ticketing.queue.domain.exception.AlreadyWatingQueueException;
+import org.ticketing.queue.domain.exception.AlreadyWaitingQueueException;
 import org.ticketing.queue.domain.exception.TokenException;
+import org.ticketing.queue.domain.model.BannedUser;
 import org.ticketing.queue.domain.model.Queue;
 import org.ticketing.queue.domain.model.QueueExitReason;
+import org.ticketing.queue.domain.repository.BannedUserRepository;
 import org.ticketing.queue.domain.repository.QueueRedisRepository;
 import org.ticketing.queue.domain.repository.QueueRepository;
 import org.ticketing.queue.infrastructure.persistence.SseEmitterRepository;
 import org.ticketing.queue.infrastructure.redis.pubsub.QueueRedisSubscriber;
-import org.ticketing.queue.domain.exception.AlreadyBannedUserException;
-import org.ticketing.queue.domain.model.BannedUser;
-import org.ticketing.queue.domain.repository.BannedUserRepository;
 import org.ticketing.queue.presentation.dto.response.UserStatusResponse;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -98,11 +100,12 @@ public class QueueService {
     }
 
     // 유저 대기열 진입(중복 진입 불가)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void entry(UUID matchId, UUID userId) {
         boolean added = queueRedisRepository.entry(matchId, userId);
 
         if (!added) {
-            throw new AlreadyWatingQueueException(matchId, userId);
+            throw new AlreadyWaitingQueueException(matchId, userId);
         }
     }
 
@@ -110,6 +113,7 @@ public class QueueService {
      * 클라이언트 SSE 구독 등록
      * 연결 즉시 현재 상태를 한 번 push하고, 이후 스케줄러가 주기적으로 push
      */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public SseEmitter subscribe(UUID matchId, UUID userId) {
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
 
@@ -162,14 +166,18 @@ public class QueueService {
         for (UUID matchId : matchIds) {
             Long totalCount = queueRedisRepository.getTotalCount(matchId);
             List<UUID> userIds = sseEmitterRepository.findUserIdsByMatchId(matchId);
+            if (userIds.isEmpty()) continue;
+
+            // Pipeline으로 모든 유저 순위 한 번에 조회
+            Map<UUID, Long> ranks = queueRedisRepository.getRankBatch(matchId, userIds);
 
             for (UUID userId : userIds) {
                 SseEmitter emitter = sseEmitterRepository.find(matchId, userId);
                 if (emitter == null) continue;
 
                 try {
-                    Long rank = queueRedisRepository.getRank(matchId, userId);
                     // 순위 업데이트만 - 토큰 발급 로직 없음
+                    Long rank = ranks.get(userId);
                     sendEvent(emitter, UserStatusResponse.ofWaiting(rank, totalCount));
                 } catch (IOException e) {
                     log.warn("[SSE] 순위 업데이트 전송 실패. matchId={}, userId={}", matchId, userId);
