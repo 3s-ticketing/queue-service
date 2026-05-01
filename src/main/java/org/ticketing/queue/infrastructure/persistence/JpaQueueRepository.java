@@ -1,6 +1,8 @@
 package org.ticketing.queue.infrastructure.persistence;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.ticketing.queue.domain.model.Queue;
 import org.ticketing.queue.domain.model.QueueStatus;
 
@@ -16,7 +18,9 @@ public interface JpaQueueRepository extends JpaRepository<Queue, UUID> {
 
     boolean existsByMatchIdAndDeletedAtIsNull(UUID matchId);
 
-    List<Queue> findAllByStatusAndOpenAtBefore(QueueStatus status, LocalDateTime openAt);
+    @Query("SELECT q FROM Queue q WHERE q.status = :status AND q.openAt < :openAt AND q.deletedAt IS NULL")
+    List<Queue> findAllReadyToOpen(@Param("status") QueueStatus status, @Param("openAt") LocalDateTime openAt);
 
-    List<Queue> findAllByStatusAndExpiredAtBefore(QueueStatus status, LocalDateTime expiredAt);
+    @Query("SELECT q FROM Queue q WHERE q.status = :status AND q.expiredAt < :expiredAt AND q.deletedAt IS NULL")
+    List<Queue> findAllExpired(@Param("status") QueueStatus status, @Param("expiredAt") LocalDateTime expiredAt);
 }

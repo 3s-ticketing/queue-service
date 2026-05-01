@@ -100,13 +100,13 @@ public class QueueRepositoryImpl implements QueueRepository {
     }
 
     @Override
-    public List<Queue> findAllByStatusAndOpenAtBefore(QueueStatus status, LocalDateTime openAt) {
-        return jpaQueueRepository.findAllByStatusAndOpenAtBefore(status, openAt);
+    public List<Queue> findAllReadyToActive(QueueStatus status, LocalDateTime openAt) {
+        return jpaQueueRepository.findAllReadyToOpen(status, openAt);
     }
 
     @Override
-    public List<Queue> findAllByStatusAndExpiredAtBefore(QueueStatus status, LocalDateTime expiredAt) {
-        return jpaQueueRepository.findAllByStatusAndExpiredAtBefore(status, expiredAt);
+    public List<Queue> findAllExpired(QueueStatus status, LocalDateTime expiredAt) {
+        return jpaQueueRepository.findAllExpired(status, expiredAt);
     }
 
     private OrderSpecifier<?>[] getOrderSpecifiers(Sort sort) {

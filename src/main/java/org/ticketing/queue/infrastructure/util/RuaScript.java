@@ -37,14 +37,14 @@ public class RuaScript {
     public static final DefaultRedisScript<Long> ACQUIRE_SLOT_AND_TOKEN_SCRIPT =
             new DefaultRedisScript<>(
                     """
-                    local tokenKey = KEYS[1]
+                    local userTokenKey = KEYS[1]
                     local availableKey = KEYS[2]
                     local userId = ARGV[1]
                     local ttl = ARGV[2]
                     local placeholder = ARGV[3]
                     
                     -- 이미 토큰 키가 존재하면 슬롯 획득 없이 상태만 반환
-                    local existing = redis.call('HGET', tokenKey, userId)
+                    local existing = redis.call('GET', userTokenKey)
                     if existing then
                         if existing == placeholder then
                             return -3  -- PLACEHOLDER: 다른 스레드 발급 중
@@ -66,8 +66,7 @@ public class RuaScript {
                     
                     -- 슬롯 차감 + PLACEHOLDER 세팅 (원자적)
                     redis.call('DECR', availableKey)
-                    redis.call('HSET', tokenKey, userId, placeholder)
-                    redis.call('EXPIRE', tokenKey, ttl)
+                    redis.call('SET', userTokenKey, placeholder, 'EX', ttl)
                     return 1  -- 획득 성공
                     """,
                     Long.class

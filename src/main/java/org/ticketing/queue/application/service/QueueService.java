@@ -103,6 +103,12 @@ public class QueueService {
     // 유저 대기열 진입(중복 진입 불가)
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void entry(UUID matchId, UUID userId) {
+        // 토큰 보유 유저는 재진입 불가
+        String existingToken = queueRedisRepository.getPassToken(matchId, userId);
+        if (existingToken != null) {
+            throw new TokenException(String.format("이미 발급된 토큰이 있습니다. matchId = {}, userId = {}", matchId, userId));
+        }
+
         boolean added = queueRedisRepository.entry(matchId, userId);
 
         if (!added) {
@@ -135,6 +141,23 @@ public class QueueService {
         });
 
         sseEmitterRepository.save(matchId, userId, emitter);
+
+        // 토큰 보유 유저 → 즉시 토큰 전송 후 대기열 제거
+        String existingToken = queueRedisRepository.getPassToken(matchId, userId);
+        if (existingToken != null) {
+            log.info("[SSE] 토큰 보유 유저 재접속. 즉시 토큰 전송. matchId={}, userId={}", matchId, userId);
+            try {
+                LocalDateTime expiredAt = queueRedisRepository.getExpiredAt(matchId, userId);
+                sendEvent(emitter, UserStatusResponse.ofIssued(existingToken, expiredAt));
+            } catch (IOException e) {
+                log.warn("[SSE] 토큰 즉시 전송 실패. matchId={}, userId={}", matchId, userId);
+            } finally {
+                queueRedisRepository.exit(matchId, userId); // 대기열 잔류 제거
+                emitter.complete();
+                sseEmitterRepository.remove(matchId, userId);
+            }
+            return emitter;
+        }
 
         // 구독 즉시 슬롯 비교 → 범위 내면 바로 토큰 발급
         Long rank = queueRedisRepository.getRank(matchId, userId);

@@ -29,7 +29,7 @@ public class QueueScheduler {
         LocalDateTime now = LocalDateTime.now();
         log.info("[Queue 활성화 스케줄러] 실행 시각: {}", now);
 
-        List<Queue> readyQueues = queueRepository.findAllByStatusAndOpenAtBefore(QueueStatus.READY, now);
+        List<Queue> readyQueues = queueRepository.findAllReadyToActive(QueueStatus.READY, now);
 
         if (readyQueues.isEmpty()) {
             log.info("[Queue 활성화 스케줄러] 활성화 대상 Queue 없음");
@@ -58,7 +58,7 @@ public class QueueScheduler {
         LocalDateTime now = LocalDateTime.now();
         log.info("[Queue 만료 스케줄러] 실행 시각: {}", now);
 
-        List<Queue> activeQueues = queueRepository.findAllByStatusAndExpiredAtBefore(QueueStatus.ACTIVE, now);
+        List<Queue> activeQueues = queueRepository.findAllExpired(QueueStatus.ACTIVE, now);
 
         if (activeQueues.isEmpty()) {
             log.info("[Queue 만료 스케줄러] 만료 대상 Queue 없음");

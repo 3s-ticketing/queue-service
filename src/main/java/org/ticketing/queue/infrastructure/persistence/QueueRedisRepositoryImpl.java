@@ -2,8 +2,10 @@ package org.ticketing.queue.infrastructure.persistence;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.Cursor;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Repository;
 import org.ticketing.queue.domain.exception.*;
@@ -15,10 +17,7 @@ import org.ticketing.queue.domain.repository.QueueRepository;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 import static org.ticketing.queue.infrastructure.util.RuaScript.*;
@@ -35,7 +34,7 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
     private static final String QUEUE_SEQUENCE_KEY = "queue:seq:%s";  // 대기 순번
     private static final String SLOTS_MAX_KEY  = "queue:slots:max:%s";  // 최대 슬롯
     private static final String SLOTS_AVAILABLE_KEY  = "queue:slots:available:%s";  // 남은 슬롯
-    private static final String PASS_TOKEN_KEY = "queue:pass-token:%s";
+    private static final String PASS_TOKEN_KEY = "queue:pass-token:%s:%s";
     private static final String ENTERED_AT_KEY = "queue:entered-at:%s"; // queue:entered-at:{matchId}
     private static final String BANNED_USER_KEY = "queue:banned:%s:%s"; // queue:banned:{matchId}:{userId}
 
@@ -183,7 +182,7 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
      */
     @Override
     public AcquireResult acquireSlotAndToken(UUID matchId, UUID userId) {
-        String tokenKey = getPassTokenKey(matchId);
+        String tokenKey = getPassTokenKey(matchId, userId);
         String availableKey = SLOTS_AVAILABLE_KEY.formatted(matchId);
         long ttlSeconds = TOKEN_TTL_MINUTES * 60;
 
@@ -196,50 +195,45 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
         );
 
         if (result == null) {
-            throw new SlotException("슬롯+토큰 선점 결과가 null입니다.",
-                    HttpStatus.INTERNAL_SERVER_ERROR);
+            throw new SlotException("슬롯+토큰 선점 결과가 null입니다.", HttpStatus.INTERNAL_SERVER_ERROR);
         }
 
         return switch (result.intValue()) {
             case  1  -> AcquireResult.SUCCESS;
             case -1  -> AcquireResult.NO_SLOT;
-            case -2  -> throw new SlotException("슬롯 미초기화",
-                    HttpStatus.INTERNAL_SERVER_ERROR);
+            case -2  -> throw new SlotException("슬롯 미초기화", HttpStatus.INTERNAL_SERVER_ERROR);
             case -3  -> AcquireResult.PENDING;
             case -4  -> AcquireResult.ALREADY_ISSUED;
-            default  -> throw new SlotException("알 수 없는 결과: " + result,
-                    HttpStatus.INTERNAL_SERVER_ERROR);
+            default  -> throw new SlotException("알 수 없는 결과: " + result, HttpStatus.INTERNAL_SERVER_ERROR);
         };
     }
 
     // 토큰 조회 (PENDING이면 발급 중이므로 null 처리)
     @Override
     public String getPassToken(UUID matchId, UUID userId) {
-        String key = getPassTokenKey(matchId);
-        String value = (String) redisTemplate.opsForHash().get(key, userId.toString());
+        String key = getPassTokenKey(matchId, userId);
+        String value = redisTemplate.opsForValue().get(key);
         return PLACEHOLDER.equals(value) ? null : value; // 발급 중이면 null 반환
     }
 
     // 선점 후 실제 토큰으로 덮어쓰기
     @Override
     public void savePassToken(UUID matchId, UUID userId, String token) {
-        String key = String.format(PASS_TOKEN_KEY, matchId);
-        redisTemplate.opsForHash().put(key, userId.toString(), token);
-        // TTL은 Hash 전체에 적용
-        redisTemplate.expire(key, TOKEN_TTL_MINUTES, TimeUnit.MINUTES);
+        String key = getPassTokenKey(matchId, userId);
+        redisTemplate.opsForValue().set(key, token, TOKEN_TTL_MINUTES, TimeUnit.MINUTES);
     }
 
     // 토큰 삭제
     @Override
     public void deletePassToken(UUID matchId, UUID userId) {
-        String key = String.format(PASS_TOKEN_KEY, matchId);
-        redisTemplate.opsForHash().delete(key, userId.toString());
+        String key = getPassTokenKey(matchId, userId);
+        redisTemplate.delete(key);
     }
 
     @Override
     public String findPassToken(UUID matchId, UUID userId) {
-        String key = String.format(PASS_TOKEN_KEY, matchId);
-        String token = (String) redisTemplate.opsForHash().get(key, userId.toString());
+        String key = getPassTokenKey(matchId, userId);
+        String token = redisTemplate.opsForValue().get(key);
 
         if (token == null) {
             throw new TokenException(String.format("해당 토큰이 존재하지 않습니다. matchId = %s, userId = %s", matchId, userId));
@@ -249,7 +243,7 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
 
     @Override
     public LocalDateTime getExpiredAt(UUID matchId, UUID userId) {
-        String key = String.format(PASS_TOKEN_KEY, matchId);
+        String key = getPassTokenKey(matchId, userId);
         Long ttlSeconds = redisTemplate.getExpire(key, TimeUnit.SECONDS);
         return LocalDateTime.now().plusSeconds(ttlSeconds);
     }
@@ -281,14 +275,41 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
         log.info("[Redis] 대기열 초기화 완료. matchId={}", matchId);
     }
 
+    /**
+     * SCAN으로 pass-token:{matchId}:* 패턴 키 순회 삭제
+     * keys() 대신 scan() 사용 → 운영 환경 블로킹 방지
+     */
     private void deletePassTokensByMatchId(UUID matchId) {
-        String key = String.format(PASS_TOKEN_KEY, matchId);
-        redisTemplate.delete(key);
-        log.info("[Redis] pass-token 삭제 완료. matchId={}", matchId);
+        String pattern = String.format("queue:pass-token:%s:*", matchId);
+
+        ScanOptions options = ScanOptions.scanOptions()
+                .match(pattern)
+                .count(100)     // 한 번에 스캔할 커서 힌트
+                .build();
+
+        List<String> keysToDelete = new ArrayList<>();
+
+        try (Cursor<byte[]> cursor = redisTemplate.getConnectionFactory()
+                .getConnection()
+                .scan(options)) {
+
+            while (cursor.hasNext()) {
+                keysToDelete.add(new String(cursor.next()));
+            }
+
+        } catch (Exception e) {
+            log.error("[Redis] pass-token SCAN 실패. matchId={}", matchId, e);
+            throw new SlotException("대기열 초기화 중 토큰 삭제 실패", HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+
+        if (!keysToDelete.isEmpty()) {
+            redisTemplate.delete(keysToDelete);
+            log.info("[Redis] 토큰 {}건 삭제 완료. matchId={}", keysToDelete.size(), matchId);
+        }
     }
 
     private void deleteEnteredAtByMatchId(UUID matchId) {
-        String key = String.format(ENTERED_AT_KEY, matchId);
+        String key = getEnteredAtKey(matchId);
         redisTemplate.delete(key);
         log.info("[Redis] entered-at 삭제 완료. matchId={}", matchId);
     }
@@ -310,8 +331,8 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
         return String.format(ENTERED_AT_KEY, matchId);
     }
 
-    private String getPassTokenKey(UUID matchId) {
-        return String.format(PASS_TOKEN_KEY, matchId);
+    private String getPassTokenKey(UUID matchId, UUID userId) {
+        return String.format(PASS_TOKEN_KEY, matchId, userId);
     }
 
     private String getBannedKey(UUID matchId, UUID userId) {

@@ -24,7 +24,7 @@ public interface QueueRepository {
 
     boolean existsByMatchId(UUID matchId);
 
-    List<Queue> findAllByStatusAndOpenAtBefore(QueueStatus status, LocalDateTime openAt);
+    List<Queue> findAllReadyToActive(QueueStatus status, LocalDateTime openAt);
 
-    List<Queue> findAllByStatusAndExpiredAtBefore(QueueStatus status, LocalDateTime expiredAt);
+    List<Queue> findAllExpired(QueueStatus status, LocalDateTime expiredAt);
 }
