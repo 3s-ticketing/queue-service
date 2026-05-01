@@ -2,8 +2,6 @@ package org.ticketing.queue.presentation.dto.response;
 
 import org.ticketing.queue.application.dto.result.UserStatusResult;
 
-import java.time.LocalDateTime;
-
 public record UserStatusResponse(
         Long rank,           // 현재 순번
         Long totalCount,     // 전체 대기 인원수
@@ -26,7 +24,7 @@ public record UserStatusResponse(
         return new UserStatusResponse(rank, totalCount, true, accessToken, "PASSED");
     }
 
-    public static UserStatusResponse ofIssued(String token, LocalDateTime expiredAt) {
+    public static UserStatusResponse ofIssued(String token) {
         return new UserStatusResponse(null, null, true, token, "ISSUED");
     }
 

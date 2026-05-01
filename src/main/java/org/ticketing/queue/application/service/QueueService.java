@@ -147,8 +147,7 @@ public class QueueService {
         if (existingToken != null) {
             log.info("[SSE] 토큰 보유 유저 재접속. 즉시 토큰 전송. matchId={}, userId={}", matchId, userId);
             try {
-                LocalDateTime expiredAt = queueRedisRepository.getExpiredAt(matchId, userId);
-                sendEvent(emitter, UserStatusResponse.ofIssued(existingToken, expiredAt));
+                sendEvent(emitter, UserStatusResponse.ofIssued(existingToken));
             } catch (IOException e) {
                 log.warn("[SSE] 토큰 즉시 전송 실패. matchId={}, userId={}", matchId, userId);
             } finally {

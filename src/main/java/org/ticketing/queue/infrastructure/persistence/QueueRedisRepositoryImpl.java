@@ -245,6 +245,11 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
     public LocalDateTime getExpiredAt(UUID matchId, UUID userId) {
         String key = getPassTokenKey(matchId, userId);
         Long ttlSeconds = redisTemplate.getExpire(key, TimeUnit.SECONDS);
+
+        if (ttlSeconds == null || ttlSeconds < 0) {
+            throw new TokenException(String.format("토큰이 존재하지 않거나 만료 시간이 없습니다. matchId = %s, userId = %s", matchId, userId));
+        }
+
         return LocalDateTime.now().plusSeconds(ttlSeconds);
     }
 
