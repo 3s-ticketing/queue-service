@@ -40,7 +40,7 @@ public class QueueRepositoryImpl implements QueueRepository {
 
     @Override
     public Queue findByMatchId(UUID matchId) {
-        return jpaQueueRepository.findByMatchId(matchId)
+        return jpaQueueRepository.findByMatchIdAndDeletedAtIsNull(matchId)
                 .orElseThrow(() -> new QueueNotFoundException(String.valueOf(matchId)));
     }
 
@@ -96,7 +96,7 @@ public class QueueRepositoryImpl implements QueueRepository {
 
     @Override
     public boolean existsByMatchId(UUID matchId) {
-        return jpaQueueRepository.existsByMatchId(matchId);
+        return jpaQueueRepository.existsByMatchIdAndDeletedAtIsNull(matchId);
     }
 
     @Override

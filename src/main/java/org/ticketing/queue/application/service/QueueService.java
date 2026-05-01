@@ -90,7 +90,8 @@ public class QueueService {
                 command.matchId(),
                 command.maxActiveUsers(),
                 command.status(),
-                command.openAt()
+                command.openAt(),
+                command.expiredAt()
         );
     }
 

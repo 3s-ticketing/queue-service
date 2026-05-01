@@ -12,9 +12,9 @@ import java.util.UUID;
 public interface JpaQueueRepository extends JpaRepository<Queue, UUID> {
     Optional<Queue> findByIdAndDeletedAtIsNull(UUID queueId);
 
-    Optional<Queue> findByMatchId(UUID matchId);
+    Optional<Queue> findByMatchIdAndDeletedAtIsNull(UUID matchId);
 
-    boolean existsByMatchId(UUID matchId);
+    boolean existsByMatchIdAndDeletedAtIsNull(UUID matchId);
 
     List<Queue> findAllByStatusAndOpenAtBefore(QueueStatus status, LocalDateTime openAt);
 
