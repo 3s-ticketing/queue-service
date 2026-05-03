@@ -14,9 +14,7 @@ import org.ticketing.queue.domain.model.Queue;
 import org.ticketing.queue.domain.repository.QueueRedisRepository;
 import org.ticketing.queue.domain.repository.QueueRepository;
 
-import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
@@ -34,16 +32,20 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
     private static final String QUEUE_SEQUENCE_KEY = "queue:seq:%s";  // 대기 순번
     private static final String SLOTS_MAX_KEY  = "queue:slots:max:%s";  // 최대 슬롯
     private static final String SLOTS_AVAILABLE_KEY  = "queue:slots:available:%s";  // 남은 슬롯
-    private static final String PASS_TOKEN_KEY = "queue:pass-token:%s:%s";
+    private static final String PASS_TOKEN_KEY = "queue:pass-token:%s:%s"; // queue:pass-token:{matchId}:{userId}
     private static final String ENTERED_AT_KEY = "queue:entered-at:%s"; // queue:entered-at:{matchId}
     private static final String BANNED_USER_KEY = "queue:banned:%s:%s"; // queue:banned:{matchId}:{userId}
+    private static final String OPEN_AT_KEY = "queue:open-at:%s"; // queue:open-at:{matchId}
 
     private static final String PLACEHOLDER = "PENDING";   // 토큰 발급 전 선점 표시
     private static final long TOKEN_TTL_MINUTES = 10L;
 
+
     // 유저 대기열 진입 (QUEUE_SEQUENCE_KEY 순번 증가)
     @Override
     public boolean entry(UUID matchId, UUID userId) {
+        validateTicketOpenAt(matchId); // 예매 시작 시간 체크
+
         String queueKey = getKey(matchId);
         String sequenceKey = getSeqKey(matchId);
         String bannedKey = getBannedKey(matchId, userId);
@@ -69,6 +71,24 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
         }
 
         return Long.valueOf(1L).equals(result);
+    }
+
+    // 대기열 진입 전 예매 시작 시간 체크
+    private void validateTicketOpenAt(UUID matchId) {
+        String openAtKey = String.format(OPEN_AT_KEY, matchId);
+        String openAtValue = redisTemplate.opsForValue().get(openAtKey);
+
+        // null이면 키가 만료된 것 = 이미 오픈 시간이 지남 → 통과
+        if (openAtValue == null) {
+            return;
+        }
+
+        long openAtEpoch = Long.parseLong(openAtValue);
+        long nowEpoch = OffsetDateTime.now(ZoneOffset.UTC).toEpochSecond();
+
+        if (nowEpoch < openAtEpoch) {
+            throw new QueueNotOpenException(matchId);
+        }
     }
 
     // 유저의 현재 순번 조회 (0부터 시작하므로 +1)
@@ -137,15 +157,29 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
 
     // 최대 슬롯, 사용 가능한 슬롯 초기 설정
     @Override
-    public void initSlots(UUID matchId) {
+    public void initSlots(UUID matchId, OffsetDateTime ticketOpenAt) {
         Queue queue = queueRepository.findByMatchId(matchId);
         String maxKey = String.format(SLOTS_MAX_KEY, matchId);
         String availableKey = String.format(SLOTS_AVAILABLE_KEY, matchId);
+        String openAtKey = String.format(OPEN_AT_KEY, matchId);
 
+        // 예매 시작 시간 저장 + 자동 만료 설정
+        long nowEpoch = OffsetDateTime.now(ZoneOffset.UTC).toEpochSecond();
+        long openAtEpoch = ticketOpenAt.toEpochSecond();
+        long ttlSeconds = openAtEpoch - nowEpoch;
+
+        // 대기열 READY 상태로 변경
         queue.ready();
 
         redisTemplate.opsForValue().set(maxKey, String.valueOf(queue.getMaxActiveUsers()));
         redisTemplate.opsForValue().set(availableKey, String.valueOf(queue.getMaxActiveUsers()));
+        // 예매 시작 시간 저장 (epoch second로 저장 - 비교 연산 용이)
+        if (ttlSeconds > 0) {
+            redisTemplate.opsForValue().set(openAtKey, String.valueOf(openAtEpoch), ttlSeconds, TimeUnit.SECONDS);
+        } else {
+            // 이미 오픈 시간이 지난 경우 (혹은 즉시 오픈)
+            redisTemplate.opsForValue().set(openAtKey, String.valueOf(openAtEpoch));
+        }
     }
 
     // 사용가능한 슬롯 수 확인
@@ -258,6 +292,9 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
      * - queue:{matchId}                     → 대기열 sortedSet
      * - queue:slots:max:{matchId}           → 최대 슬롯
      * - queue:slots:available:{matchId}     → 남은 슬롯
+     * - queue:seq:{seq}                     → seq 키
+     * - queue:open-at:{matchId}             → 예매 오픝 시간
+     * - queue:entered-at:{matchId}          → 유저별 대기열 입장 시간
      * - queue:pass-token:{matchId}:*        → 통과 토큰 전체
      */
     @Override
@@ -272,9 +309,12 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
         // 3. seq 키 삭제(대기 순번)
         redisTemplate.delete(getSeqKey(matchId));
 
-        // 4. 해당 matchId의 통과 토큰 전체 삭제 (SCAN 사용 - keys() 운영 부하 방지)
+        // 4. open-at 키 삭제
+        redisTemplate.delete(OPEN_AT_KEY.formatted(matchId));
+
+        // 5. 해당 matchId의 통과 토큰 전체 삭제 (SCAN 사용 - keys() 운영 부하 방지)
         deletePassTokensByMatchId(matchId);
-        // 5. enteredAt 키 삭제 추가
+        // 6. enteredAt 키 삭제 추가
         deleteEnteredAtByMatchId(matchId);
 
         log.info("[Redis] 대기열 초기화 완료. matchId={}", matchId);

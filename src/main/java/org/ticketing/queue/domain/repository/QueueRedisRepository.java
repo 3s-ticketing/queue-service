@@ -3,6 +3,7 @@ package org.ticketing.queue.domain.repository;
 import org.ticketing.queue.domain.model.AcquireResult;
 
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -29,7 +30,7 @@ public interface QueueRedisRepository {
 
     // ── 슬롯 관리 ────────────────────────────────────────────────────────
 
-    void initSlots(UUID matchId);
+    void initSlots(UUID matchId, OffsetDateTime ticketOpenAt);
 
     Long getAvailableSlots(UUID matchId);
 
