@@ -106,7 +106,7 @@ public class QueueService {
         // 토큰 보유 유저는 재진입 불가
         String existingToken = queueRedisRepository.getPassToken(matchId, userId);
         if (existingToken != null) {
-            throw new TokenException(String.format("이미 발급된 토큰이 있습니다. matchId = {}, userId = {}", matchId, userId));
+            throw new TokenException(String.format("이미 발급된 토큰이 있습니다. matchId = %s, userId = %s", matchId, userId));
         }
 
         boolean added = queueRedisRepository.entry(matchId, userId);
