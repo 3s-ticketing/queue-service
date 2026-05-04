@@ -18,14 +18,14 @@ spring:
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 30
-      minimum-idle: 20
+      minimum-idle: 10
       connection-timeout: 3000
       idle-timeout: 600000
       max-lifetime: 1800000
 
   jpa:
     hibernate:
-      ddl-auto: ${JPA_DDL_AUTO:create}   # 도커는 update (create면 매번 초기화 위험)
+      ddl-auto: ${JPA_DDL_AUTO:update}   # 도커는 update (create면 매번 초기화 위험)
     properties:
       hibernate:
         default_schema: ${QUEUE_SCHEMA:queue}
