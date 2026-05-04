@@ -9,6 +9,7 @@ public record QueueUpdateCommand(
         UUID matchId,
         Integer maxActiveUsers,
         QueueStatus status,
-        LocalDateTime openAt
+        LocalDateTime openAt,
+        LocalDateTime expiredAt
 ) {
 }

@@ -11,15 +11,7 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(
-        name = "p_queue",
-        uniqueConstraints = {
-                @UniqueConstraint(
-                        name = "uk_p_queue_match_id",
-                        columnNames = {"match_id"}
-                )
-        }
-)
+@Table(name = "p_queue")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
@@ -42,21 +34,26 @@ public class Queue extends BaseEntity {
     @Column(name = "open_at", nullable = false)
     private LocalDateTime openAt;
 
-    public static Queue create(UUID id, UUID matchId, int maxActiveUsers, LocalDateTime openAt) {
+    @Column(name = "expired_at", nullable = false)
+    private LocalDateTime expiredAt;
+
+    public static Queue create(UUID id, UUID matchId, int maxActiveUsers, LocalDateTime openAt, LocalDateTime expiredAt) {
         return new Queue(
                 id,
                 matchId,
                 maxActiveUsers,
                 QueueStatus.CLOSED,
-                openAt
+                openAt,
+                expiredAt
         );
     }
 
-    public void update(UUID matchId, int maxActiveUsers, QueueStatus status, LocalDateTime openAt) {
+    public void update(UUID matchId, int maxActiveUsers, QueueStatus status, LocalDateTime openAt, LocalDateTime expiredAt) {
         this.matchId = matchId;
         this.maxActiveUsers = maxActiveUsers;
         this.status = status;
         this.openAt = openAt;
+        this.expiredAt = expiredAt;
     }
 
     public void softDelete(UUID userId) {
@@ -74,5 +71,4 @@ public class Queue extends BaseEntity {
     public void ready() {
         this.status = QueueStatus.READY;
     }
-
 }

@@ -5,7 +5,10 @@ import org.springframework.data.domain.Pageable;
 import org.ticketing.queue.domain.dto.QueueProjection;
 import org.ticketing.queue.domain.dto.QueueSearchCondition;
 import org.ticketing.queue.domain.model.Queue;
+import org.ticketing.queue.domain.model.QueueStatus;
 
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 public interface QueueRepository {
@@ -20,4 +23,8 @@ public interface QueueRepository {
     Queue save(Queue queue);
 
     boolean existsByMatchId(UUID matchId);
+
+    List<Queue> findAllReadyToActive(QueueStatus status, LocalDateTime openAt);
+
+    List<Queue> findAllExpired(QueueStatus status, LocalDateTime expiredAt);
 }

@@ -5,7 +5,6 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.context.ActiveProfiles;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -27,9 +26,10 @@ class QueueTest {
             UUID matchId = UUID.randomUUID();
             int maxActiveUsers = 100;
             LocalDateTime openAt = LocalDateTime.now().plusHours(1);
+            LocalDateTime expiredAt = LocalDateTime.now().plusHours(2);
 
             // when
-            Queue queue = Queue.create(queueId, matchId, maxActiveUsers, openAt);
+            Queue queue = Queue.create(queueId, matchId, maxActiveUsers, openAt, expiredAt);
 
             // then
             assertThat(queue.getId()).isEqualTo(queueId);
@@ -98,13 +98,15 @@ class QueueTest {
             UUID newMatchId = UUID.randomUUID();
             int newMaxActiveUsers = 300;
             LocalDateTime newOpenAt = LocalDateTime.now().plusDays(1);
+            LocalDateTime expiredAt = LocalDateTime.now().plusDays(2);
 
             // when
             queue.update(
                     newMatchId,
                     newMaxActiveUsers,
                     QueueStatus.ACTIVE,
-                    newOpenAt
+                    newOpenAt,
+                    expiredAt
             );
 
             // then
@@ -112,6 +114,7 @@ class QueueTest {
             assertThat(queue.getMaxActiveUsers()).isEqualTo(newMaxActiveUsers);
             assertThat(queue.getStatus()).isEqualTo(QueueStatus.ACTIVE);
             assertThat(queue.getOpenAt()).isEqualTo(newOpenAt);
+            assertThat(queue.getExpiredAt()).isEqualTo(expiredAt);
         }
     }
 
@@ -140,7 +143,8 @@ class QueueTest {
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 100,
-                LocalDateTime.now().plusHours(1)
+                LocalDateTime.now().plusHours(1),
+                LocalDateTime.now().plusHours(2)
         );
     }
 

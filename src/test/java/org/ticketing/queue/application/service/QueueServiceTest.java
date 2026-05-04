@@ -13,7 +13,7 @@ import org.ticketing.queue.application.dto.command.QueueCreateCommand;
 import org.ticketing.queue.application.dto.command.TokenValidateCommand;
 import org.ticketing.queue.domain.exception.AlreadyBannedUserException;
 import org.ticketing.queue.domain.exception.AlreadyInitQueueException;
-import org.ticketing.queue.domain.exception.AlreadyWatingQueueException;
+import org.ticketing.queue.domain.exception.AlreadyWaitingQueueException;
 import org.ticketing.queue.domain.exception.TokenException;
 import org.ticketing.queue.domain.model.BannedUser;
 import org.ticketing.queue.domain.model.Queue;
@@ -74,14 +74,16 @@ class QueueServiceTest {
             QueueCreateCommand command = new QueueCreateCommand(
                     matchId,
                     100,
-                    LocalDateTime.now().plusHours(1)
+                    LocalDateTime.now().plusHours(1),
+                    LocalDateTime.now().plusHours(2)
             );
 
             Queue queue = Queue.create(
                     UUID.randomUUID(),
                     command.matchId(),
                     command.maxActiveUsers(),
-                    command.openAt()
+                    command.openAt(),
+                    command.expiredAt()
             );
 
             when(queueRepository.existsByMatchId(matchId)).thenReturn(false);
@@ -104,7 +106,8 @@ class QueueServiceTest {
             QueueCreateCommand command = new QueueCreateCommand(
                     matchId,
                     100,
-                    LocalDateTime.now()
+                    LocalDateTime.now(),
+                    LocalDateTime.now().plusHours(2)
             );
 
             when(queueRepository.existsByMatchId(matchId)).thenReturn(true);
@@ -146,7 +149,7 @@ class QueueServiceTest {
 
             // when & then
             assertThatThrownBy(() -> queueService.entry(matchId, userId))
-                    .isInstanceOf(AlreadyWatingQueueException.class);
+                    .isInstanceOf(AlreadyWaitingQueueException.class);
         }
     }
 

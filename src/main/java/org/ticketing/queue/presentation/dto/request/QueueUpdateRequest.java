@@ -10,14 +10,16 @@ public record QueueUpdateRequest(
         UUID matchId,
         Integer maxActiveUsers,
         QueueStatus status,
-        LocalDateTime openAt
+        LocalDateTime openAt,
+        LocalDateTime expiredAt
 ) {
     public static QueueUpdateCommand toCommand(QueueUpdateRequest request) {
         return new QueueUpdateCommand(
                 request.matchId,
                 request.maxActiveUsers,
                 request.status,
-                request.openAt
+                request.openAt,
+                request.expiredAt
         );
     }
 }

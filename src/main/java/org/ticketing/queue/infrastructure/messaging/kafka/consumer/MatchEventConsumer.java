@@ -38,7 +38,7 @@ public class MatchEventConsumer {
             MDC.put("traceId", traceId);
 
             event = objectMapper.readValue(record.value(), MatchApprovedEvent.class);
-            queueRedisRepository.initSlots(event.matchId());
+            queueRedisRepository.initSlots(event.matchId(), event.ticketOpenAt());
             log.info("[queue-service] 레디스 대기열 설정 추가: {}", event.matchId());
 
             ack.acknowledge(); // 정상 처리 후 ACK

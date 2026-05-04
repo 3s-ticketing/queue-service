@@ -89,7 +89,7 @@ public class QueueRedisSubscriber implements MessageListener {
                     return;
                 }
                 case SUCCESS -> {
-                    slotAcquired = true;  // rollback 필요
+                    slotAcquired = true;
                 }
             }
 

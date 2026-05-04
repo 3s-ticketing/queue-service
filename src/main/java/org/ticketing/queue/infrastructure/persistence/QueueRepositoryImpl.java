@@ -14,8 +14,10 @@ import org.ticketing.queue.domain.dto.QueueProjection;
 import org.ticketing.queue.domain.dto.QueueSearchCondition;
 import org.ticketing.queue.domain.exception.QueueNotFoundException;
 import org.ticketing.queue.domain.model.Queue;
+import org.ticketing.queue.domain.model.QueueStatus;
 import org.ticketing.queue.domain.repository.QueueRepository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -38,7 +40,7 @@ public class QueueRepositoryImpl implements QueueRepository {
 
     @Override
     public Queue findByMatchId(UUID matchId) {
-        return jpaQueueRepository.findByMatchId(matchId)
+        return jpaQueueRepository.findByMatchIdAndDeletedAtIsNull(matchId)
                 .orElseThrow(() -> new QueueNotFoundException(String.valueOf(matchId)));
     }
 
@@ -94,7 +96,17 @@ public class QueueRepositoryImpl implements QueueRepository {
 
     @Override
     public boolean existsByMatchId(UUID matchId) {
-        return jpaQueueRepository.existsByMatchId(matchId);
+        return jpaQueueRepository.existsByMatchIdAndDeletedAtIsNull(matchId);
+    }
+
+    @Override
+    public List<Queue> findAllReadyToActive(QueueStatus status, LocalDateTime openAt) {
+        return jpaQueueRepository.findAllReadyToOpen(status, openAt);
+    }
+
+    @Override
+    public List<Queue> findAllExpired(QueueStatus status, LocalDateTime expiredAt) {
+        return jpaQueueRepository.findAllExpired(status, expiredAt);
     }
 
     private OrderSpecifier<?>[] getOrderSpecifiers(Sort sort) {

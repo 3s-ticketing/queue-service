@@ -24,6 +24,10 @@ public record UserStatusResponse(
         return new UserStatusResponse(rank, totalCount, true, accessToken, "PASSED");
     }
 
+    public static UserStatusResponse ofIssued(String token) {
+        return new UserStatusResponse(null, null, true, token, "ISSUED");
+    }
+
     public static UserStatusResponse ofRefreshed() {
         return new UserStatusResponse(null, null, false, null, "REFRESHED");
     }

@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.ticketing.queue.application.dto.result.QueueListResult;
@@ -30,6 +31,7 @@ public class QueueController {
      * GET /api/queues/{queueId}
      * Role : ADMIN
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/{queueId}")
     public QueueResponse getQueue(@PathVariable("queueId") UUID queueId) {
         return QueueResponse.from(queueService.getQueue(queueId));
@@ -40,6 +42,7 @@ public class QueueController {
      * GET /api/queues
      * Role : ADMIN
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping
     public QueueListResponse getQueueList(@ModelAttribute QueueListGetRequest request, Pageable pageable) {
         QueueListResult listResult = queueService.getQueueList(QueueListGetRequest.toQuery(request), pageable);
@@ -51,6 +54,7 @@ public class QueueController {
      * POST /api/queues
      * Role : ADMIN
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping
     public QueueIdResponse createQueue(@Valid @RequestBody QueueCreateRequest request) {
         UUID queueId = queueService.createQueue(QueueCreateRequest.toCommand(request));
@@ -62,6 +66,7 @@ public class QueueController {
      * PUT /api/queues/{queueId}
      * Role : ADMIN
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/{queueId}")
     public QueueIdResponse updateQueue(@PathVariable("queueId") UUID queueId, @Valid @RequestBody QueueUpdateRequest request) {
         queueService.updateQueue(queueId, QueueUpdateRequest.toCommand(request));
@@ -73,6 +78,7 @@ public class QueueController {
      * DELETE /api/queues/{queueId}
      * Role : ADMIN
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @DeleteMapping("/{queueId}")
     public void deleteQueue(@PathVariable("queueId") UUID queueId, @RequestHeader("X-User-Id") UUID userId) {
         queueService.deleteQueue(queueId, userId);
@@ -101,6 +107,7 @@ public class QueueController {
      * Post /api/queues/{matchId}/validation
      * Role : INTERNAL
      */
+    @PreAuthorize("hasRole('INTERNAL')")
     @PostMapping("/{matchId}/validation")
     public void validation(@PathVariable("matchId") UUID matchId, @RequestBody TokenValidateRequest request) {
         queueService.validate(TokenValidateRequest.toCommand(request, matchId));
@@ -111,6 +118,7 @@ public class QueueController {
      * Post /api/queues/{matchId}/refresh
      * Role : ADMIN
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/{matchId}/refresh")
     public void refreshQueue(@PathVariable("matchId") UUID matchId) {
         queueService.refreshQueue(matchId);
@@ -119,8 +127,9 @@ public class QueueController {
     /**
      * 대기열 유저 차단
      * Post /api/queues/{matchId}/{userId}/banned
-     * Role : ADMIN
+     * Role : ADMIN, CLUB_ADMIN
      */
+    @PreAuthorize("hasAnyRole('ADMIN','CLUB_ADMIN')")
     @PostMapping("/{matchId}/{userId}/banned")
     public void banUser(@PathVariable("matchId") UUID matchId, @PathVariable UUID userId) {
         queueService.banUser(matchId, userId);
