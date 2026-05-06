@@ -14,7 +14,7 @@ spring:
 
   data:
     redis:
-      host: ticketing-redis
+      host: ${REDIS_HOST:ticketing-redis}
       port: ${REDIS_PORT:6379}
       timeout: 5000ms
       lettuce:
@@ -31,7 +31,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: ${JPA_DDL_AUTO:update}   # 도커는 update (create면 매번 초기화 위험)
+      ddl-auto: ${JPA_DDL_AUTO:update}
     properties:
       hibernate:
         default_schema: ${QUEUE_SCHEMA:queue}
@@ -39,12 +39,12 @@ spring:
           create_schemas: true
 
   kafka:
-    bootstrap-servers: kafka:9092
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS}
 
 eureka:
   client:
     service-url:
-      defaultZone: ${EUREKA_DEFAULT_ZONE:http://eureka-server:10001/eureka/}  # 도커 내부 서비스명
+      defaultZone: ${EUREKA_DEFAULT_ZONE:http://eureka-server:10001/eureka/}
 
 management:
   metrics:
@@ -56,7 +56,7 @@ management:
         include: health,info,prometheus
   tracing:
     sampling:
-      probability: 1.0
+      probability: 0.1
   zipkin:
     tracing:
       endpoint: ${ZIPKIN_URL:http://localhost:9411/api/v2/spans}
