@@ -1,3 +1,12 @@
+server:
+  tomcat:
+    threads:
+      max: 500
+      min-spare: 100
+    accept-count: 1000
+    max-connections: 8192
+    connection-timeout: 5000
+
 spring:
   config:
     activate:
@@ -6,7 +15,7 @@ spring:
   data:
     redis:
       host: ticketing-redis
-      port: 6379
+      port: ${REDIS_PORT:6379}
       timeout: 5000ms
       lettuce:
         shutdown-timeout: 100ms
@@ -19,9 +28,6 @@ spring:
     hikari:
       maximum-pool-size: 30
       minimum-idle: 10
-      connection-timeout: 3000
-      idle-timeout: 600000
-      max-lifetime: 1800000
 
   jpa:
     hibernate:
@@ -41,6 +47,9 @@ eureka:
       defaultZone: ${EUREKA_DEFAULT_ZONE:http://eureka-server:10001/eureka/}  # 도커 내부 서비스명
 
 management:
+  metrics:
+    tags:
+      application: ${spring.application.name}   # Grafana 필터링 기준
   endpoints:
     web:
       exposure:
@@ -52,15 +61,6 @@ management:
     tracing:
       endpoint: ${ZIPKIN_URL:http://localhost:9411/api/v2/spans}
 
-#  data:
-#    redis:
-#      password: ${REDIS_PASSWORD}
-#      sentinel:
-#        master: mymaster
-#        nodes:
-#          - redis-sentinel-1:26379
-#          - redis-sentinel-2:26379
-#          - redis-sentinel-3:26379
-#      timeout: 5000ms
-#      lettuce:
-#        shutdown-timeout: 100ms
+queue:
+  token:
+    secret: ${QUEUE_TOKEN_SECRET}
