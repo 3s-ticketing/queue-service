@@ -1,5 +1,9 @@
 HELP.md
+README.md
+.git
+.gitignore
 .gradle
+build
 build/
 !gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/
@@ -22,6 +26,7 @@ bin/
 *.iws
 *.iml
 *.ipr
+out
 out/
 !**/src/main/**/out/
 !**/src/test/**/out/
@@ -35,4 +40,5 @@ out/
 /.nb-gradle/
 
 ### VS Code ###
+.vscode
 .vscode/
