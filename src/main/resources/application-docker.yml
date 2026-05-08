@@ -21,7 +21,7 @@ spring:
         shutdown-timeout: 100ms
 
   datasource:
-    url: jdbc:postgresql://${DB_HOST:ticketing-postgres}:${DB_PORT:15432}/${DB_NAME:ticketing}?currentSchema=${QUEUE_SCHEMA:queue}
+    url: jdbc:postgresql://${DB_HOST:ticketing-postgres}:${DB_PORT:15432}/${DB_NAME:ticketing}?currentSchema=${DB_SCHEMA:queue}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
@@ -34,7 +34,7 @@ spring:
       ddl-auto: ${JPA_DDL_AUTO:update}
     properties:
       hibernate:
-        default_schema: ${QUEUE_SCHEMA:queue}
+        default_schema: ${DB_SCHEMA:queue}
         hbm2ddl:
           create_schemas: true
 
@@ -49,7 +49,7 @@ eureka:
 management:
   metrics:
     tags:
-      application: ${spring.application.name}   # Grafana 필터링 기준
+      application: ${spring.application.name}
   endpoints:
     web:
       exposure:
