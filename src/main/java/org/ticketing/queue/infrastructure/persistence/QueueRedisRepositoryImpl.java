@@ -11,6 +11,7 @@ import org.springframework.stereotype.Repository;
 import org.ticketing.queue.domain.exception.*;
 import org.ticketing.queue.domain.model.AcquireResult;
 import org.ticketing.queue.domain.model.Queue;
+import org.ticketing.queue.domain.model.SlotAcquire;
 import org.ticketing.queue.domain.repository.QueueRedisRepository;
 import org.ticketing.queue.domain.repository.QueueRepository;
 
@@ -211,34 +212,46 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
     }
 
     /**
-     * 결과에 따라 분기만 처리
-     * 원자적으로 슬롯+토큰 동시 획득
+     * 원자적으로 슬롯+토큰 선점 및 enteredAt 조회
+     * Lua 스크립트가 enteredAt 존재 여부를 슬롯 획득 전에 체크하므로
+     * acquireSlot SUCCESS 이후 별도 getEnteredAt() 호출 불필요
      */
     @Override
-    public AcquireResult acquireSlotAndToken(UUID matchId, UUID userId) {
+    @SuppressWarnings("unchecked")
+    public SlotAcquire acquireSlotAndToken(UUID matchId, UUID userId) {
         String tokenKey = getPassTokenKey(matchId, userId);
         String availableKey = SLOTS_AVAILABLE_KEY.formatted(matchId);
+        String enteredAtKey = getEnteredAtKey(matchId);
         long ttlSeconds = TOKEN_TTL_MINUTES * 60;
 
-        Long result = redisTemplate.execute(
+        List<Object> result = (List<Object>) redisTemplate.execute(
                 ACQUIRE_SLOT_AND_TOKEN_SCRIPT,
-                List.of(tokenKey, availableKey),
+                List.of(tokenKey, availableKey, enteredAtKey),
                 userId.toString(),
                 String.valueOf(ttlSeconds),
                 PLACEHOLDER
         );
 
-        if (result == null) {
+        if (result == null || result.isEmpty()) {
             throw new SlotException("슬롯+토큰 선점 결과가 null입니다.", HttpStatus.INTERNAL_SERVER_ERROR);
         }
 
-        return switch (result.intValue()) {
-            case  1  -> AcquireResult.SUCCESS;
-            case -1  -> AcquireResult.NO_SLOT;
-            case -2  -> throw new SlotException("슬롯 미초기화", HttpStatus.INTERNAL_SERVER_ERROR);
-            case -3  -> AcquireResult.PENDING;
-            case -4  -> AcquireResult.ALREADY_ISSUED;
-            default  -> throw new SlotException("알 수 없는 결과: " + result, HttpStatus.INTERNAL_SERVER_ERROR);
+        long code = (Long) result.get(0);
+
+        return switch ((int) code) {
+            case  1 -> {
+                String raw = (String) result.get(1);
+                LocalDateTime enteredAt = Instant.ofEpochMilli(Long.parseLong(raw))
+                        .atZone(ZoneId.systemDefault())
+                        .toLocalDateTime();
+                yield SlotAcquire.success(enteredAt);
+            }
+            case -1 -> SlotAcquire.of(AcquireResult.NO_SLOT);
+            case -2 -> throw new SlotException("슬롯 미초기화", HttpStatus.INTERNAL_SERVER_ERROR);
+            case -3 -> SlotAcquire.of(AcquireResult.PENDING);
+            case -4 -> SlotAcquire.of(AcquireResult.ALREADY_ISSUED);
+            case -5 -> SlotAcquire.of(AcquireResult.USER_NOT_IN_QUEUE);
+            default -> throw new SlotException("알 수 없는 결과: " + code, HttpStatus.INTERNAL_SERVER_ERROR);
         };
     }
 

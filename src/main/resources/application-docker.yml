@@ -1,11 +1,12 @@
 server:
   tomcat:
     threads:
-      max: 500
+      max: 1000
       min-spare: 100
     accept-count: 1000
-    max-connections: 8192
-    connection-timeout: 5000
+    max-connections: 10000
+
+  port: ${SERVER_PORT:20007}
 
 spring:
   config:
@@ -16,9 +17,18 @@ spring:
     redis:
       host: ${REDIS_HOST:ticketing-redis}
       port: ${REDIS_PORT:6379}
-      timeout: 5000ms
+      timeout: 10000ms
       lettuce:
-        shutdown-timeout: 100ms
+        pool:
+          max-active: 200
+          max-idle: 50
+          min-idle: 20
+          max-wait: 3000ms
+
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/init-schema.sql
 
   datasource:
     url: jdbc:postgresql://${DB_HOST:ticketing-postgres}:${DB_PORT:15432}/${DB_NAME:ticketing}?currentSchema=${DB_SCHEMA:queue}

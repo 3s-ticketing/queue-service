@@ -1,6 +1,5 @@
 package org.ticketing.queue.application.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -50,8 +49,6 @@ public class QueueService {
     private final SseEmitterRepository sseEmitterRepository; // ← ConcurrentHashMap 대체
     private final QueueRedisSubscriber queueRedisSubscriber;
     private final BannedUserRepository bannedUserRepository;
-
-    private final ObjectMapper objectMapper;
 
     // SSE 타임아웃: 15분 (대기열 최대 대기 시간 기준)
     private static final long SSE_TIMEOUT_MS = 15 * 60 * 1000L;
@@ -133,7 +130,6 @@ public class QueueService {
             LocalDateTime enteredAt = queueRedisRepository.getEnteredAt(matchId, userId);
             queueHistoryService.record(matchId, userId, enteredAt, QueueExitReason.TIMEOUT);
             sseEmitterRepository.remove(matchId, userId);
-            emitter.complete();
         });
         emitter.onError(e -> {
             log.warn("[SSE] 연결 에러. matchId={}, userId={}", matchId, userId);
@@ -142,36 +138,39 @@ public class QueueService {
 
         sseEmitterRepository.save(matchId, userId, emitter);
 
-        // 토큰 보유 유저 → 즉시 토큰 전송 후 대기열 제거
-        String existingToken = queueRedisRepository.getPassToken(matchId, userId);
-        if (existingToken != null) {
-            log.info("[SSE] 토큰 보유 유저 재접속. 즉시 토큰 전송. matchId={}, userId={}", matchId, userId);
-            try {
-                sendEvent(emitter, UserStatusResponse.ofIssued(existingToken));
-            } catch (IOException e) {
-                log.warn("[SSE] 토큰 즉시 전송 실패. matchId={}, userId={}", matchId, userId);
-            } finally {
-                queueRedisRepository.exit(matchId, userId); // 대기열 잔류 제거
-                emitter.complete();
-                sseEmitterRepository.remove(matchId, userId);
+        try {
+            // 토큰 보유 유저 → 즉시 토큰 전송 후 대기열 제거
+            String existingToken = queueRedisRepository.getPassToken(matchId, userId);
+            if (existingToken != null) {
+                log.info("[SSE] 토큰 보유 유저 재접속. 즉시 토큰 전송. matchId={}, userId={}", matchId, userId);
+                try {
+                    sendEvent(emitter, UserStatusResponse.ofIssued(existingToken));
+                } catch (IOException e) {
+                    log.warn("[SSE] 토큰 즉시 전송 실패. matchId={}, userId={}", matchId, userId);
+                } finally {
+                    queueRedisRepository.exit(matchId, userId);
+                    emitter.complete(); // onCompletion → remove()
+                }
+                return emitter;
             }
-            return emitter;
-        }
 
-        // 구독 즉시 슬롯 비교 → 범위 내면 바로 토큰 발급
-        Long rank = queueRedisRepository.getRank(matchId, userId);
-        Long totalCount = queueRedisRepository.getTotalCount(matchId);
-        Long availableSlots = queueRedisRepository.getAvailableSlots(matchId);
+            // 구독 즉시 슬롯 비교 → 범위 내면 바로 토큰 발급
+            Long rank = queueRedisRepository.getRank(matchId, userId);
+            Long totalCount = queueRedisRepository.getTotalCount(matchId);
 
-        if (rank != null && availableSlots != null && rank <= availableSlots) {
-            // 슬롯 범위 내 → 즉시 토큰 발급 시도
             queueRedisSubscriber.pushStatus(matchId, userId, emitter, rank, totalCount);
-        } else {
-            // 슬롯 범위 밖 → 현재 순위만 전송하고 대기
+
+        } catch (Exception e) {
+            log.error("[SSE] 구독 처리 중 예외 발생. matchId={}, userId={}", matchId, userId, e);
             try {
-                sendEvent(emitter, UserStatusResponse.ofWaiting(rank, totalCount));
-            } catch (IOException e) {
-                log.warn("[SSE] 초기 상태 전송 실패. matchId={}, userId={}", matchId, userId);
+                emitter.send(
+                        SseEmitter.event()
+                                .name("error")
+                                .data("서버 오류가 발생했습니다.")
+                );
+            } catch (IOException ignored) {
+                emitter.completeWithError(e);
+                sseEmitterRepository.remove(matchId, userId);
             }
         }
 
@@ -191,23 +190,23 @@ public class QueueService {
             List<UUID> userIds = sseEmitterRepository.findUserIdsByMatchId(matchId);
             if (userIds.isEmpty()) continue;
 
-            // Pipeline으로 모든 유저 순위 한 번에 조회
             Map<UUID, Long> ranks = queueRedisRepository.getRankBatch(matchId, userIds);
 
-            for (UUID userId : userIds) {
+            // parallel stream으로 변경
+            userIds.parallelStream().forEach(userId -> {
                 SseEmitter emitter = sseEmitterRepository.find(matchId, userId);
-                if (emitter == null) continue;
+                if (emitter == null) return;
 
-                try {
-                    // 순위 업데이트만 - 토큰 발급 로직 없음
-                    Long rank = ranks.get(userId);
-                    sendEvent(emitter, UserStatusResponse.ofWaiting(rank, totalCount));
-                } catch (IOException e) {
-                    log.warn("[SSE] 순위 업데이트 전송 실패. matchId={}, userId={}", matchId, userId);
-                    sseEmitterRepository.remove(matchId, userId);
-                    emitter.completeWithError(e);
+                // rank == null, 이미 exit() 됐는데 emitter만 남은 경우 → 정리
+                Long rank = ranks.get(userId);
+                if (rank == null) {
+                    emitter.complete(); // onCompletion → remove()
+                    return;
                 }
-            }
+
+                // 무조건 pushStatus → Lua 스크립트가 슬롯 판단
+                queueRedisSubscriber.pushStatus(matchId, userId, emitter, rank, totalCount);
+            });
         }
     }
 
@@ -217,13 +216,13 @@ public class QueueService {
             emitter.send(
                     SseEmitter.event()
                             .name("queue-status")
-                            .data(objectMapper.writeValueAsString(response))
+                            .data(response)
                             .id(String.valueOf(System.currentTimeMillis()))
                             .reconnectTime(3000)
             );
         } catch (IllegalStateException e) {
-            // 이미 완료된 emitter → 무시
-            log.warn("[SSE] 이미 완료된 emitter. 전송 스킵");
+            // 이미 완료된 emitter → IOException으로 변환해 호출부에서 처리
+            throw new IOException("Emitter already completed", e);
         }
     }
 
@@ -292,9 +291,7 @@ public class QueueService {
                 emitter.send(
                         SseEmitter.event()
                                 .name("queue-refresh")
-                                .data(objectMapper.writeValueAsString(
-                                        UserStatusResponse.ofRefreshed()
-                                ))
+                                .data(UserStatusResponse.ofRefreshed())
                                 .id(String.valueOf(System.currentTimeMillis()))
                 );
             } catch (IOException e) {
@@ -376,9 +373,7 @@ public class QueueService {
             emitter.send(
                     SseEmitter.event()
                             .name("queue-banned")
-                            .data(objectMapper.writeValueAsString(
-                                    UserStatusResponse.ofBanned()
-                            ))
+                            .data(UserStatusResponse.ofBanned())
                             .id(String.valueOf(System.currentTimeMillis()))
             );
         } catch (IOException e) {
