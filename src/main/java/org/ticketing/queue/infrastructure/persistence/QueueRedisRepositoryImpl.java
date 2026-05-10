@@ -79,13 +79,13 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
         String openAtKey = String.format(OPEN_AT_KEY, matchId);
         String openAtValue = redisTemplate.opsForValue().get(openAtKey);
 
-        // null이면 키가 만료된 것 = 이미 오픈 시간이 지남 → 통과
+        // null이면 initSlots() 미실행 = 대기열 미초기화
         if (openAtValue == null) {
-            return;
+            throw new QueueNotFoundException(matchId);
         }
 
         long openAtEpoch = Long.parseLong(openAtValue);
-        long nowEpoch = OffsetDateTime.now(ZoneOffset.UTC).toEpochSecond();
+        long nowEpoch = Instant.now().toEpochMilli();
 
         if (nowEpoch < openAtEpoch) {
             throw new QueueNotOpenException(matchId);
@@ -164,23 +164,15 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
         String availableKey = String.format(SLOTS_AVAILABLE_KEY, matchId);
         String openAtKey = String.format(OPEN_AT_KEY, matchId);
 
-        // 예매 시작 시간 저장 + 자동 만료 설정
-        long nowEpoch = OffsetDateTime.now(ZoneOffset.UTC).toEpochSecond();
         long openAtEpoch = ticketOpenAt.toEpochSecond();
-        long ttlSeconds = openAtEpoch - nowEpoch;
 
         // 대기열 READY 상태로 변경
         queue.ready();
 
         redisTemplate.opsForValue().set(maxKey, String.valueOf(queue.getMaxActiveUsers()));
         redisTemplate.opsForValue().set(availableKey, String.valueOf(queue.getMaxActiveUsers()));
-        // 예매 시작 시간 저장 (epoch second로 저장 - 비교 연산 용이)
-        if (ttlSeconds > 0) {
-            redisTemplate.opsForValue().set(openAtKey, String.valueOf(openAtEpoch), ttlSeconds, TimeUnit.SECONDS);
-        } else {
-            // 이미 오픈 시간이 지난 경우 (혹은 즉시 오픈)
-            redisTemplate.opsForValue().set(openAtKey, String.valueOf(openAtEpoch));
-        }
+        // 예매 시작 시간 저장 (epoch second로 저장 - 비교 연산 용이, TTL 없이 저장)
+        redisTemplate.opsForValue().set(openAtKey, String.valueOf(openAtEpoch));
     }
 
     // 사용가능한 슬롯 수 확인

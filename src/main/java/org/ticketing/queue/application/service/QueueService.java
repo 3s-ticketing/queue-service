@@ -298,7 +298,6 @@ public class QueueService {
                 log.warn("[SSE] 초기화 이벤트 전송 실패. matchId={}, userId={}", matchId, userId);
             } finally {
                 emitter.complete();
-                sseEmitterRepository.remove(matchId, userId);
             }
         }
     }
