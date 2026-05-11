@@ -1,3 +1,12 @@
+server:
+  tomcat:
+    threads:
+      max: 500
+      min-spare: 100
+    accept-count: 1000
+    max-connections: 8192
+    connection-timeout: 5000
+
 spring:
   config:
     activate:
@@ -5,62 +14,53 @@ spring:
 
   data:
     redis:
-      host: ticketing-redis
-      port: 6379
+      host: ${REDIS_HOST:ticketing-redis}
+      port: ${REDIS_PORT:6379}
       timeout: 5000ms
       lettuce:
         shutdown-timeout: 100ms
 
   datasource:
-    url: jdbc:postgresql://${DB_HOST:ticketing-postgres}:${DB_PORT:15432}/${DB_NAME:ticketing}?currentSchema=${QUEUE_SCHEMA:queue}
+    url: jdbc:postgresql://${DB_HOST:ticketing-postgres}:${DB_PORT:15432}/${DB_NAME:ticketing}?currentSchema=${DB_SCHEMA:queue}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 30
       minimum-idle: 10
-      connection-timeout: 3000
-      idle-timeout: 600000
-      max-lifetime: 1800000
 
   jpa:
     hibernate:
-      ddl-auto: ${JPA_DDL_AUTO:update}   # 도커는 update (create면 매번 초기화 위험)
+      ddl-auto: ${JPA_DDL_AUTO:update}
     properties:
       hibernate:
-        default_schema: ${QUEUE_SCHEMA:queue}
+        default_schema: ${DB_SCHEMA:queue}
         hbm2ddl:
           create_schemas: true
 
   kafka:
-    bootstrap-servers: kafka:9092
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS}
 
 eureka:
   client:
     service-url:
-      defaultZone: ${EUREKA_DEFAULT_ZONE:http://eureka-server:10001/eureka/}  # 도커 내부 서비스명
+      defaultZone: ${EUREKA_DEFAULT_ZONE:http://eureka-server:10001/eureka/}
 
 management:
+  metrics:
+    tags:
+      application: ${spring.application.name}
   endpoints:
     web:
       exposure:
         include: health,info,prometheus
   tracing:
     sampling:
-      probability: 1.0
+      probability: 0.1
   zipkin:
     tracing:
       endpoint: ${ZIPKIN_URL:http://localhost:9411/api/v2/spans}
 
-#  data:
-#    redis:
-#      password: ${REDIS_PASSWORD}
-#      sentinel:
-#        master: mymaster
-#        nodes:
-#          - redis-sentinel-1:26379
-#          - redis-sentinel-2:26379
-#          - redis-sentinel-3:26379
-#      timeout: 5000ms
-#      lettuce:
-#        shutdown-timeout: 100ms
+queue:
+  token:
+    secret: ${QUEUE_TOKEN_SECRET}

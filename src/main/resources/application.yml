@@ -3,10 +3,27 @@ spring:
     name: queue-service
 
   config:
-    import: optional:configserver:${CONFIG_SERVER_URL:http://localhost:10002}
+    import: optional:configserver:http://localhost:10002
 
-  cloud:
-    config:
-      fail-fast: false          # config-server 없어도 로컬 기동 가능
-      import-check:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:19092}
+    consumer:
+      group-id: queue-service
+      auto-offset-reset: latest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      properties:
+        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
+        spring.json.trusted.packages: "org.ticketing.queue.domain.event,java.util,java.lang"
+        spring.json.use.type.headers: false
+        spring.json.value.default.type: org.ticketing.queue.domain.event.MatchApprovedEvent
+
+management:
+  tracing:
+    enabled: false
+    sampling:
+      probability: 0.0
+  zipkin:
+    tracing:
+      export:
         enabled: false
