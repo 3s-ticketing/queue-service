@@ -232,13 +232,8 @@ class QueueServiceTest {
             UUID matchId = UUID.randomUUID();
             UUID userId = UUID.randomUUID();
 
-            // rank(10) > availableSlots(5) → else 분기 → sendEvent() 호출
             when(queueRedisRepository.getRank(matchId, userId)).thenReturn(10L);
             when(queueRedisRepository.getTotalCount(matchId)).thenReturn(100L);
-            when(queueRedisRepository.getAvailableSlots(matchId)).thenReturn(5L);
-
-            when(objectMapper.writeValueAsString(any()))
-                    .thenReturn("{\"status\":\"WAITING\",\"rank\":10,\"totalCount\":100}");
 
             doNothing().when(sseEmitterRepository)
                     .save(eq(matchId), eq(userId), any(SseEmitter.class));
@@ -250,7 +245,7 @@ class QueueServiceTest {
             assertThat(emitter).isNotNull();
 
             verify(sseEmitterRepository).save(eq(matchId), eq(userId), any(SseEmitter.class));
-            verify(queueRedisSubscriber, never())
+            verify(queueRedisSubscriber)
                     .pushStatus(any(), any(), any(), any(), any());
         }
 
@@ -261,10 +256,8 @@ class QueueServiceTest {
             UUID matchId = UUID.randomUUID();
             UUID userId = UUID.randomUUID();
 
-            // rank(3) <= availableSlots(5) → if 분기 → pushStatus() 호출
             when(queueRedisRepository.getRank(matchId, userId)).thenReturn(3L);
             when(queueRedisRepository.getTotalCount(matchId)).thenReturn(100L);
-            when(queueRedisRepository.getAvailableSlots(matchId)).thenReturn(5L);
 
             doNothing().when(sseEmitterRepository)
                     .save(eq(matchId), eq(userId), any(SseEmitter.class));
@@ -312,9 +305,6 @@ class QueueServiceTest {
 
             when(queueRedisRepository.getEnteredAt(matchId, user2))
                     .thenReturn(LocalDateTime.now().minusMinutes(3));
-
-            when(objectMapper.writeValueAsString(any()))
-                    .thenReturn("{\"status\":\"REFRESHED\"}");
 
             // when
             queueService.refreshQueue(matchId);
@@ -364,9 +354,6 @@ class QueueServiceTest {
 
             when(sseEmitterRepository.find(matchId, userId))
                     .thenReturn(emitter);
-
-            when(objectMapper.writeValueAsString(any()))
-                    .thenReturn("{\"status\":\"BANNED\"}");
 
             // when
             queueService.banUser(matchId, userId);
