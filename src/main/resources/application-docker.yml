@@ -25,8 +25,13 @@ spring:
           min-idle: 20
           max-wait: 3000ms
 
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/init-schema.sql
+
   datasource:
-    url: jdbc:postgresql://${DB_HOST:ticketing-postgres}:${DB_PORT:15432}/${DB_NAME:ticketing}?currentSchema=${DB_SCHEMA:queue_service}
+    url: jdbc:postgresql://${DB_HOST:ticketing-postgres}:${DB_PORT:15432}/${DB_NAME:ticketing}?currentSchema=${DB_SCHEMA:queue}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
@@ -58,7 +63,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,prometheus
+        include: health,info,prometheus,metrics
   tracing:
     sampling:
       probability: 0.1
