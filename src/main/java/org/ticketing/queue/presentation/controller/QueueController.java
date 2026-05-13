@@ -8,6 +8,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.ticketing.queue.application.dto.result.QueueListResult;
+import org.ticketing.queue.application.service.MatchAuthorizationService;
 import org.ticketing.queue.application.service.QueueService;
 import org.ticketing.queue.presentation.dto.request.QueueCreateRequest;
 import org.ticketing.queue.presentation.dto.request.QueueListGetRequest;
@@ -17,6 +18,8 @@ import org.ticketing.queue.presentation.dto.response.QueueIdResponse;
 import org.ticketing.queue.presentation.dto.response.QueueListResponse;
 import org.ticketing.queue.presentation.dto.response.QueueResponse;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -25,6 +28,7 @@ import java.util.UUID;
 public class QueueController {
 
     private final QueueService queueService;
+    private final MatchAuthorizationService matchAuthorizationService;
 
     /**
      * 대기열 단일 조회
@@ -131,7 +135,11 @@ public class QueueController {
      */
     @PreAuthorize("hasAnyRole('ADMIN','CLUB_ADMIN')")
     @PostMapping("/{matchId}/{userId}/banned")
-    public void banUser(@PathVariable("matchId") UUID matchId, @PathVariable UUID userId) {
+    public void banUser(@PathVariable("matchId") UUID matchId, @PathVariable UUID userId, @RequestHeader("X-User-Roles") String roles) {
+        List<String> roleList = Arrays.asList(roles.split(","));
+        if (roleList.contains("CLUB_ADMIN")) {
+            matchAuthorizationService.validateClubAdmin(matchId, userId);
+        }
         queueService.banUser(matchId, userId);
     }
 }
