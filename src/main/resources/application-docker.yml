@@ -2,7 +2,7 @@ server:
   tomcat:
     threads:
       max: 1000
-      min-spare: 100
+      min-spare: 500
     accept-count: 1000
     max-connections: 10000
 
@@ -25,13 +25,8 @@ spring:
           min-idle: 20
           max-wait: 3000ms
 
-  sql:
-    init:
-      mode: always
-      schema-locations: classpath:db/init-schema.sql
-
   datasource:
-    url: jdbc:postgresql://${DB_HOST:ticketing-postgres}:${DB_PORT:15432}/${DB_NAME:ticketing}?currentSchema=${DB_SCHEMA:queue}
+    url: jdbc:postgresql://${DB_HOST:ticketing-postgres}:${DB_PORT:15432}/${DB_NAME:ticketing}?currentSchema=${DB_SCHEMA:queue_service}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
@@ -60,6 +55,9 @@ management:
   metrics:
     tags:
       application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
   endpoints:
     web:
       exposure:
@@ -70,6 +68,28 @@ management:
   zipkin:
     tracing:
       endpoint: ${ZIPKIN_URL:http://localhost:9411/api/v2/spans}
+
+feign:
+  circuitbreaker:
+    enabled: true
+resilience4j:
+  circuitbreaker:
+    instances:
+      default:
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+        record-exceptions:
+          - java.lang.Exception
+
+  retry:
+    instances:
+      default:
+        max-attempts: 3
+        wait-duration: 500ms
+        retry-exceptions:
+          - java.lang.Exception
 
 queue:
   token:

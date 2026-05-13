@@ -8,10 +8,10 @@ import org.ticketing.queue.infrastructure.feign.response.MatchResponse;
 
 import java.util.UUID;
 
-@FeignClient(name = "match-service")
+@FeignClient(name = "match-service", fallback = MatchFeignClientFallback.class)
 public interface MatchFeignClient {
 
     @GetMapping("/api/matches/{matchId}")
     MatchResponse getMatch(@PathVariable("matchId") UUID matchId,
-                           @RequestHeader("X-User-Roles") String roles);
+                           @RequestHeader("X-Internal-Service") String internalService);
 }
