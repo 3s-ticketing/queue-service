@@ -44,7 +44,7 @@ public class MatchAuthorizationService {
 
     private MatchResponse fetchMatch(UUID matchId) {
         try {
-            return matchFeignClient.getMatch(matchId);
+            return matchFeignClient.getMatch(matchId, "ADMIN");
         } catch (Exception e) {
             log.error("[Auth] 경기 정보 조회 실패. matchId={}", matchId, e);
             throw new NotFoundClubMatchException(matchId, null);

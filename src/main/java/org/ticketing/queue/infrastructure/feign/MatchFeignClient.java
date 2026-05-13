@@ -3,6 +3,7 @@ package org.ticketing.queue.infrastructure.feign;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.ticketing.queue.infrastructure.feign.response.MatchResponse;
 
 import java.util.UUID;
@@ -11,5 +12,6 @@ import java.util.UUID;
 public interface MatchFeignClient {
 
     @GetMapping("/api/matches/{matchId}")
-    MatchResponse getMatch(@PathVariable("matchId") UUID matchId);
+    MatchResponse getMatch(@PathVariable("matchId") UUID matchId,
+                           @RequestHeader("X-User-Roles") String roles);
 }
