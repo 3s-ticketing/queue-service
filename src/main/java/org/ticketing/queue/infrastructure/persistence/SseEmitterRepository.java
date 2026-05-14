@@ -28,13 +28,10 @@ public class SseEmitterRepository {
 
     public void remove(UUID matchId, UUID userId) {
         emitters.remove(buildKey(matchId, userId));
-        Set<UUID> userIds = matchUserIndex.get(matchId);
-        if (userIds != null) {
+        matchUserIndex.computeIfPresent(matchId, (id, userIds) -> {
             userIds.remove(userId);
-            if (userIds.isEmpty()) {
-                matchUserIndex.remove(matchId, userIds);
-            }
-        }
+            return userIds.isEmpty() ? null : userIds;
+        });
     }
 
     public List<UUID> findUserIdsByMatchId(UUID matchId) {

@@ -136,9 +136,13 @@ public class QueueController {
     @PreAuthorize("hasAnyRole('ADMIN','CLUB_ADMIN')")
     @PostMapping("/{matchId}/{userId}/banned")
     public void banUser(@PathVariable("matchId") UUID matchId, @PathVariable UUID userId, @RequestHeader("X-User-Roles") String roles) {
-        List<String> roleList = Arrays.asList(roles.split(","));
-        if (roleList.contains("CLUB_ADMIN")) {
-            matchAuthorizationService.validateClubAdmin(matchId, userId);
+        if (roles != null && !roles.isBlank()) {
+            List<String> roleList = Arrays.stream(roles.split(","))
+                    .map(String::trim)
+                    .toList();
+            if (roleList.contains("CLUB_ADMIN")) {
+                matchAuthorizationService.validateClubAdmin(matchId, userId);
+            }
         }
         queueService.banUser(matchId, userId);
     }

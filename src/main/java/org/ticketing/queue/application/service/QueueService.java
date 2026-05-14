@@ -168,9 +168,10 @@ public class QueueService {
                                 .name("error")
                                 .data("서버 오류가 발생했습니다.")
                 );
-            } catch (IOException ignored) {
+            } catch (IOException sendEx) {
+                log.warn("[SSE] 에러 이벤트 전송 실패. matchId={}, userId={}", matchId, userId, sendEx);
+            } finally {
                 emitter.completeWithError(e);
-                sseEmitterRepository.remove(matchId, userId);
             }
         }
 

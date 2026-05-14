@@ -79,7 +79,9 @@ resilience4j:
         wait-duration-in-open-state: 10s
         permitted-number-of-calls-in-half-open-state: 3
         record-exceptions:
-          - java.lang.Exception
+          - feign.RetryableException
+          - java.io.IOException
+          - java.util.concurrent.TimeoutException
 
   retry:
     instances:
