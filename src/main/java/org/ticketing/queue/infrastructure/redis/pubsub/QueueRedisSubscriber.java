@@ -1,6 +1,5 @@
 package org.ticketing.queue.infrastructure.redis.pubsub;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.connection.Message;
@@ -8,9 +7,9 @@ import org.springframework.data.redis.connection.MessageListener;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.ticketing.queue.application.service.QueueHistoryService;
-import org.ticketing.queue.domain.model.AcquireResult;
 import org.ticketing.queue.domain.model.QueueExitReason;
 import org.ticketing.queue.domain.model.QueueToken;
+import org.ticketing.queue.domain.model.SlotAcquire;
 import org.ticketing.queue.domain.repository.QueueRedisRepository;
 import org.ticketing.queue.domain.service.QueueTokenDomainService;
 import org.ticketing.queue.infrastructure.persistence.SseEmitterRepository;
@@ -30,7 +29,6 @@ public class QueueRedisSubscriber implements MessageListener {
     private final QueueRedisRepository queueRedisRepository;
     private final QueueTokenDomainService queueTokenDomainService;
     private final SseEmitterRepository sseEmitterRepository;
-    private final ObjectMapper objectMapper;
 
     @Override
     public void onMessage(Message message, byte[] pattern) {
@@ -69,9 +67,9 @@ public class QueueRedisSubscriber implements MessageListener {
         LocalDateTime enteredAt = null;
 
         try {
-            AcquireResult acquireResult = queueRedisRepository.acquireSlotAndToken(matchId, userId);
+            SlotAcquire acquireResult = queueRedisRepository.acquireSlotAndToken(matchId, userId);
 
-            switch (acquireResult) {
+            switch (acquireResult.status()) {
                 case NO_SLOT -> {
                     // 슬롯 경합 패배 → 다음 스케줄러 주기에 재시도
                     return;
@@ -80,42 +78,50 @@ public class QueueRedisSubscriber implements MessageListener {
                     // 다른 스레드가 발급 중 → 슬롯 획득 자체를 안 했으므로 반환 불필요
                     return;
                 }
+                case USER_NOT_IN_QUEUE -> {
+                    // ban/refresh/rollback 등으로 이미 대기열에서 제거된 유저
+                    // 슬롯 미획득이므로 rollback 불필요, emitter만 정리
+                    log.warn("[SSE] 슬롯 획득 시점에 유저 없음(이미 퇴장). matchId={}, userId={}", matchId, userId);
+                    emitter.complete();
+                    return;
+                }
                 case ALREADY_ISSUED -> {
                     // 이미 발급 완료 → 슬롯 획득 안 했으므로 반환 불필요
                     String existingToken = queueRedisRepository.getPassToken(matchId, userId);
-                    sendEvent(emitter, UserStatusResponse.ofPassed(rank, totalCount, existingToken));
-                    sseEmitterRepository.remove(matchId, userId);
-                    emitter.complete();
+                    try {
+                        sendEvent(emitter, UserStatusResponse.ofPassed(rank, totalCount, existingToken));
+                    } catch (IOException e) {
+                        log.warn("[SSE] ALREADY_ISSUED 전송 실패. matchId={}, userId={}", matchId, userId);
+                    }
+                    emitter.complete(); // onCompletion → remove()
                     return;
                 }
                 case SUCCESS -> {
                     slotAcquired = true;
+                    // Lua 스크립트가 원자적으로 읽은 값 → 별도 getEnteredAt() 호출 불필요
+                    enteredAt = acquireResult.enteredAt();
                 }
             }
 
             // 토큰 발급 및 저장
             QueueToken token = queueTokenDomainService.issue(matchId, userId);
-            enteredAt = queueRedisRepository.getEnteredAt(matchId, userId);
             queueRedisRepository.savePassToken(matchId, userId, token.getToken());
             queueRedisRepository.exit(matchId, userId);
 
             queueHistoryService.record(matchId, userId, enteredAt, QueueExitReason.PASSED);
 
             sendEvent(emitter, UserStatusResponse.ofPassed(rank, totalCount, token.getToken()));
-            sseEmitterRepository.remove(matchId, userId);
-            emitter.complete();
+            emitter.complete(); // onCompletion → remove()
 
         } catch (IOException e) {
             log.warn("[SSE] 전송 실패. matchId={}, userId={}", matchId, userId);
             rollback(matchId, userId, slotAcquired, true, enteredAt, QueueExitReason.IO_ERROR);
-            sseEmitterRepository.remove(matchId, userId);
-            emitter.completeWithError(e);
+            emitter.completeWithError(e); // onError → remove()
 
         } catch (Exception e) {
             log.error("[SSE] 예상치 못한 오류. matchId={}, userId={}", matchId, userId, e);
             rollback(matchId, userId, slotAcquired, true, enteredAt, QueueExitReason.UNEXPECTED_ERROR);
-            sseEmitterRepository.remove(matchId, userId);
-            emitter.completeWithError(e);
+            emitter.completeWithError(e); // onError → remove()
         }
     }
 
@@ -124,12 +130,13 @@ public class QueueRedisSubscriber implements MessageListener {
             emitter.send(
                     SseEmitter.event()
                             .name("queue-status")
-                            .data(objectMapper.writeValueAsString(response))
+                            .data(response)
                             .id(String.valueOf(System.currentTimeMillis()))
                             .reconnectTime(3000)
             );
         } catch (IllegalStateException e) {
-            log.warn("[SSE] 이미 완료된 emitter. 전송 스킵");
+            // 이미 완료된 emitter → IOException으로 변환해 호출부에서 rollback 처리
+            throw new IOException("Emitter already completed", e);
         }
     }
 
@@ -141,7 +148,7 @@ public class QueueRedisSubscriber implements MessageListener {
             queueRedisRepository.releaseSlot(matchId);
         }
         if (enteredAt == null) {
-            enteredAt = queueRedisRepository.getEnteredAt(matchId, userId);
+            enteredAt = LocalDateTime.now();
         }
         queueHistoryService.record(matchId, userId, enteredAt, reason);
     }

@@ -23,7 +23,6 @@ import org.ticketing.queue.domain.repository.QueueRedisRepository;
 import org.ticketing.queue.domain.repository.QueueRepository;
 import org.ticketing.queue.infrastructure.persistence.SseEmitterRepository;
 import org.ticketing.queue.infrastructure.redis.pubsub.QueueRedisSubscriber;
-import org.ticketing.queue.presentation.dto.response.UserStatusResponse;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -233,13 +232,8 @@ class QueueServiceTest {
             UUID matchId = UUID.randomUUID();
             UUID userId = UUID.randomUUID();
 
-            // rank(10) > availableSlots(5) → else 분기 → sendEvent() 호출
             when(queueRedisRepository.getRank(matchId, userId)).thenReturn(10L);
             when(queueRedisRepository.getTotalCount(matchId)).thenReturn(100L);
-            when(queueRedisRepository.getAvailableSlots(matchId)).thenReturn(5L);
-
-            when(objectMapper.writeValueAsString(any()))
-                    .thenReturn("{\"status\":\"WAITING\",\"rank\":10,\"totalCount\":100}");
 
             doNothing().when(sseEmitterRepository)
                     .save(eq(matchId), eq(userId), any(SseEmitter.class));
@@ -251,10 +245,10 @@ class QueueServiceTest {
             assertThat(emitter).isNotNull();
 
             verify(sseEmitterRepository).save(eq(matchId), eq(userId), any(SseEmitter.class));
-            verify(queueRedisSubscriber, never())
+            verify(queueRedisSubscriber)
                     .pushStatus(any(), any(), any(), any(), any());
-            verify(objectMapper).writeValueAsString(any(UserStatusResponse.class));
         }
+
         @Test
         @DisplayName("슬롯 범위 내 즉시 토큰 발급 시도")
         void subscribe_immediateTokenIssue() throws Exception {
@@ -262,10 +256,8 @@ class QueueServiceTest {
             UUID matchId = UUID.randomUUID();
             UUID userId = UUID.randomUUID();
 
-            // rank(3) <= availableSlots(5) → if 분기 → pushStatus() 호출
             when(queueRedisRepository.getRank(matchId, userId)).thenReturn(3L);
             when(queueRedisRepository.getTotalCount(matchId)).thenReturn(100L);
-            when(queueRedisRepository.getAvailableSlots(matchId)).thenReturn(5L);
 
             doNothing().when(sseEmitterRepository)
                     .save(eq(matchId), eq(userId), any(SseEmitter.class));
@@ -279,7 +271,6 @@ class QueueServiceTest {
             verify(sseEmitterRepository).save(eq(matchId), eq(userId), any(SseEmitter.class));
             verify(queueRedisSubscriber)
                     .pushStatus(eq(matchId), eq(userId), any(SseEmitter.class), eq(3L), eq(100L));
-            verify(objectMapper, never()).writeValueAsString(any());
         }
     }
 
@@ -315,9 +306,6 @@ class QueueServiceTest {
             when(queueRedisRepository.getEnteredAt(matchId, user2))
                     .thenReturn(LocalDateTime.now().minusMinutes(3));
 
-            when(objectMapper.writeValueAsString(any()))
-                    .thenReturn("{\"status\":\"REFRESHED\"}");
-
             // when
             queueService.refreshQueue(matchId);
 
@@ -334,9 +322,6 @@ class QueueServiceTest {
 
             verify(emitter1).complete();
             verify(emitter2).complete();
-
-            verify(sseEmitterRepository).remove(matchId, user1);
-            verify(sseEmitterRepository).remove(matchId, user2);
 
             verify(queueRedisRepository).refreshQueue(matchId);
         }
@@ -370,9 +355,6 @@ class QueueServiceTest {
             when(sseEmitterRepository.find(matchId, userId))
                     .thenReturn(emitter);
 
-            when(objectMapper.writeValueAsString(any()))
-                    .thenReturn("{\"status\":\"BANNED\"}");
-
             // when
             queueService.banUser(matchId, userId);
 
@@ -388,8 +370,6 @@ class QueueServiceTest {
 
             verify(emitter).send(any(SseEmitter.SseEventBuilder.class));
             verify(emitter).complete();
-
-            verify(sseEmitterRepository).remove(matchId, userId);
 
             verify(bannedUserRepository).save(any(BannedUser.class));
         }

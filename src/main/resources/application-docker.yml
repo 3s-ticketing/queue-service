@@ -1,11 +1,10 @@
 server:
   tomcat:
     threads:
-      max: 500
-      min-spare: 100
+      max: 1000
+      min-spare: 500
     accept-count: 1000
-    max-connections: 8192
-    connection-timeout: 5000
+    max-connections: 10000
 
 spring:
   config:
@@ -14,14 +13,18 @@ spring:
 
   data:
     redis:
-      host: ${REDIS_HOST:ticketing-redis}
-      port: ${REDIS_PORT:6379}
-      timeout: 5000ms
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
+      timeout: 10000ms
       lettuce:
-        shutdown-timeout: 100ms
+        pool:
+          max-active: 200
+          max-idle: 50
+          min-idle: 20
+          max-wait: 3000ms
 
   datasource:
-    url: jdbc:postgresql://${DB_HOST:ticketing-postgres}:${DB_PORT:15432}/${DB_NAME:ticketing}?currentSchema=${DB_SCHEMA:queue}
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}?currentSchema=${DB_SCHEMA:queue_service}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
@@ -34,7 +37,7 @@ spring:
       ddl-auto: ${JPA_DDL_AUTO:update}
     properties:
       hibernate:
-        default_schema: ${DB_SCHEMA:queue}
+        default_schema: ${DB_SCHEMA:queue_service}
         hbm2ddl:
           create_schemas: true
 
@@ -50,16 +53,43 @@ management:
   metrics:
     tags:
       application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
   endpoints:
     web:
       exposure:
-        include: health,info,prometheus
+        include: health,info,prometheus,metrics
   tracing:
     sampling:
       probability: 0.1
   zipkin:
     tracing:
       endpoint: ${ZIPKIN_URL:http://localhost:9411/api/v2/spans}
+
+feign:
+  circuitbreaker:
+    enabled: true
+resilience4j:
+  circuitbreaker:
+    instances:
+      default:
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+        record-exceptions:
+          - feign.RetryableException
+          - java.io.IOException
+          - java.util.concurrent.TimeoutException
+
+  retry:
+    instances:
+      default:
+        max-attempts: 3
+        wait-duration: 500ms
+        retry-exceptions:
+          - java.lang.Exception
 
 queue:
   token:

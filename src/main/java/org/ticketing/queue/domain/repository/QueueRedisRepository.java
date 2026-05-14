@@ -1,6 +1,6 @@
 package org.ticketing.queue.domain.repository;
 
-import org.ticketing.queue.domain.model.AcquireResult;
+import org.ticketing.queue.domain.model.SlotAcquire;
 
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
@@ -36,7 +36,7 @@ public interface QueueRedisRepository {
 
     void releaseSlot(UUID matchId);
 
-    AcquireResult acquireSlotAndToken(UUID matchId, UUID userId);
+    SlotAcquire acquireSlotAndToken(UUID matchId, UUID userId);
 
     // ── 통과 토큰 관리 ───────────────────────────────────────────────────
 

@@ -3,6 +3,8 @@ package org.ticketing.queue.infrastructure.util;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.data.redis.core.script.RedisScript;
 
+import java.util.List;
+
 public class RuaScript {
 
     public static final RedisScript<Long> ENTRY_SCRIPT = RedisScript.of("""
@@ -34,42 +36,49 @@ public class RuaScript {
     """, Long.class);
 
 
-    public static final DefaultRedisScript<Long> ACQUIRE_SLOT_AND_TOKEN_SCRIPT =
+    public static final DefaultRedisScript<List> ACQUIRE_SLOT_AND_TOKEN_SCRIPT =
             new DefaultRedisScript<>(
                     """
                     local userTokenKey = KEYS[1]
                     local availableKey = KEYS[2]
+                    local enteredAtKey = KEYS[3]
                     local userId = ARGV[1]
                     local ttl = ARGV[2]
                     local placeholder = ARGV[3]
-                    
+
                     -- 이미 토큰 키가 존재하면 슬롯 획득 없이 상태만 반환
                     local existing = redis.call('GET', userTokenKey)
                     if existing then
                         if existing == placeholder then
-                            return -3  -- PLACEHOLDER: 다른 스레드 발급 중
+                            return {-3}  -- PENDING: 다른 스레드 발급 중
                         else
-                            return -4  -- 이미 발급 완료된 토큰 존재
+                            return {-4}  -- ALREADY_ISSUED: 이미 발급 완료
                         end
                     end
-                    
+
+                    -- 유저가 여전히 대기열에 있는지 확인 (슬롯 획득 전에 원자적으로 체크)
+                    local enteredAt = redis.call('HGET', enteredAtKey, userId)
+                    if not enteredAt then
+                        return {-5}  -- USER_NOT_IN_QUEUE: ban/refresh/rollback 등으로 이미 제거됨
+                    end
+
                     -- 슬롯 확인
                     local current = redis.call('GET', availableKey)
                     if not current then
-                        return -2  -- 슬롯 미초기화
+                        return {-2}  -- 슬롯 미초기화
                     end
-                    
+
                     current = tonumber(current)
                     if current <= 0 then
-                        return -1  -- 슬롯 없음
+                        return {-1}  -- 슬롯 없음
                     end
-                    
-                    -- 슬롯 차감 + PLACEHOLDER 세팅 (원자적)
+
+                    -- 슬롯 차감 + PLACEHOLDER 세팅 + enteredAt 반환 (원자적)
                     redis.call('DECR', availableKey)
                     redis.call('SET', userTokenKey, placeholder, 'EX', ttl)
-                    return 1  -- 획득 성공
+                    return {1, enteredAt}  -- SUCCESS
                     """,
-                    Long.class
+                    List.class
             );
 
 

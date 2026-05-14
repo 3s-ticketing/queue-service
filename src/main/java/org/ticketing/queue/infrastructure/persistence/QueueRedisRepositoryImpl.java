@@ -11,6 +11,7 @@ import org.springframework.stereotype.Repository;
 import org.ticketing.queue.domain.exception.*;
 import org.ticketing.queue.domain.model.AcquireResult;
 import org.ticketing.queue.domain.model.Queue;
+import org.ticketing.queue.domain.model.SlotAcquire;
 import org.ticketing.queue.domain.repository.QueueRedisRepository;
 import org.ticketing.queue.domain.repository.QueueRepository;
 
@@ -78,13 +79,13 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
         String openAtKey = String.format(OPEN_AT_KEY, matchId);
         String openAtValue = redisTemplate.opsForValue().get(openAtKey);
 
-        // null이면 키가 만료된 것 = 이미 오픈 시간이 지남 → 통과
+        // null이면 initSlots() 미실행 = 대기열 미초기화
         if (openAtValue == null) {
-            return;
+            throw new QueueNotFoundException(matchId);
         }
 
         long openAtEpoch = Long.parseLong(openAtValue);
-        long nowEpoch = OffsetDateTime.now(ZoneOffset.UTC).toEpochSecond();
+        long nowEpoch = Instant.now().toEpochMilli();
 
         if (nowEpoch < openAtEpoch) {
             throw new QueueNotOpenException(matchId);
@@ -163,23 +164,15 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
         String availableKey = String.format(SLOTS_AVAILABLE_KEY, matchId);
         String openAtKey = String.format(OPEN_AT_KEY, matchId);
 
-        // 예매 시작 시간 저장 + 자동 만료 설정
-        long nowEpoch = OffsetDateTime.now(ZoneOffset.UTC).toEpochSecond();
         long openAtEpoch = ticketOpenAt.toEpochSecond();
-        long ttlSeconds = openAtEpoch - nowEpoch;
 
         // 대기열 READY 상태로 변경
         queue.ready();
 
         redisTemplate.opsForValue().set(maxKey, String.valueOf(queue.getMaxActiveUsers()));
         redisTemplate.opsForValue().set(availableKey, String.valueOf(queue.getMaxActiveUsers()));
-        // 예매 시작 시간 저장 (epoch second로 저장 - 비교 연산 용이)
-        if (ttlSeconds > 0) {
-            redisTemplate.opsForValue().set(openAtKey, String.valueOf(openAtEpoch), ttlSeconds, TimeUnit.SECONDS);
-        } else {
-            // 이미 오픈 시간이 지난 경우 (혹은 즉시 오픈)
-            redisTemplate.opsForValue().set(openAtKey, String.valueOf(openAtEpoch));
-        }
+        // 예매 시작 시간 저장 (epoch second로 저장 - 비교 연산 용이, TTL 없이 저장)
+        redisTemplate.opsForValue().set(openAtKey, String.valueOf(openAtEpoch));
     }
 
     // 사용가능한 슬롯 수 확인
@@ -211,34 +204,46 @@ public class QueueRedisRepositoryImpl implements QueueRedisRepository {
     }
 
     /**
-     * 결과에 따라 분기만 처리
-     * 원자적으로 슬롯+토큰 동시 획득
+     * 원자적으로 슬롯+토큰 선점 및 enteredAt 조회
+     * Lua 스크립트가 enteredAt 존재 여부를 슬롯 획득 전에 체크하므로
+     * acquireSlot SUCCESS 이후 별도 getEnteredAt() 호출 불필요
      */
     @Override
-    public AcquireResult acquireSlotAndToken(UUID matchId, UUID userId) {
+    @SuppressWarnings("unchecked")
+    public SlotAcquire acquireSlotAndToken(UUID matchId, UUID userId) {
         String tokenKey = getPassTokenKey(matchId, userId);
         String availableKey = SLOTS_AVAILABLE_KEY.formatted(matchId);
+        String enteredAtKey = getEnteredAtKey(matchId);
         long ttlSeconds = TOKEN_TTL_MINUTES * 60;
 
-        Long result = redisTemplate.execute(
+        List<Object> result = (List<Object>) redisTemplate.execute(
                 ACQUIRE_SLOT_AND_TOKEN_SCRIPT,
-                List.of(tokenKey, availableKey),
+                List.of(tokenKey, availableKey, enteredAtKey),
                 userId.toString(),
                 String.valueOf(ttlSeconds),
                 PLACEHOLDER
         );
 
-        if (result == null) {
+        if (result == null || result.isEmpty()) {
             throw new SlotException("슬롯+토큰 선점 결과가 null입니다.", HttpStatus.INTERNAL_SERVER_ERROR);
         }
 
-        return switch (result.intValue()) {
-            case  1  -> AcquireResult.SUCCESS;
-            case -1  -> AcquireResult.NO_SLOT;
-            case -2  -> throw new SlotException("슬롯 미초기화", HttpStatus.INTERNAL_SERVER_ERROR);
-            case -3  -> AcquireResult.PENDING;
-            case -4  -> AcquireResult.ALREADY_ISSUED;
-            default  -> throw new SlotException("알 수 없는 결과: " + result, HttpStatus.INTERNAL_SERVER_ERROR);
+        long code = (Long) result.get(0);
+
+        return switch ((int) code) {
+            case  1 -> {
+                String raw = (String) result.get(1);
+                LocalDateTime enteredAt = Instant.ofEpochMilli(Long.parseLong(raw))
+                        .atZone(ZoneId.systemDefault())
+                        .toLocalDateTime();
+                yield SlotAcquire.success(enteredAt);
+            }
+            case -1 -> SlotAcquire.of(AcquireResult.NO_SLOT);
+            case -2 -> throw new SlotException("슬롯 미초기화", HttpStatus.INTERNAL_SERVER_ERROR);
+            case -3 -> SlotAcquire.of(AcquireResult.PENDING);
+            case -4 -> SlotAcquire.of(AcquireResult.ALREADY_ISSUED);
+            case -5 -> SlotAcquire.of(AcquireResult.USER_NOT_IN_QUEUE);
+            default -> throw new SlotException("알 수 없는 결과: " + code, HttpStatus.INTERNAL_SERVER_ERROR);
         };
     }
 
