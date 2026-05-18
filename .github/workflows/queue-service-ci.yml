@@ -21,6 +21,7 @@ permissions:
 
 jobs:
   build-and-test:
+    name: Build and Test queue-service
     runs-on: ubuntu-latest
 
     steps:
@@ -34,13 +35,13 @@ jobs:
           java-version: 17
           cache: gradle
 
-      - name: Grant execute permission
-        run: chmod +x gradlew
+      - name: Grant execute permission for Gradle wrapper
+        run: chmod +x ./gradlew
 
       - name: Run tests
         env:
-          GPR_USER: ${{ github.actor }}
-          GPR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GPR_USER: ${{ secrets.GPR_USER }}
+          GPR_TOKEN: ${{ secrets.GPR_TOKEN }}
           QUEUE_TOKEN_SECRET: ${{ secrets.QUEUE_TOKEN_SECRET }}
         run: ./gradlew clean test
 
